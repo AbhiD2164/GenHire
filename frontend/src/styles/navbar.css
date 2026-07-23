@@ -2,9 +2,11 @@
   position: sticky;
   top: 0;
   z-index: 100;
-  background: rgba(250, 247, 240, 0.92);
-  backdrop-filter: blur(10px);
+  background: rgba(248, 250, 252, 0.88);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03);
 }
 
 .navbar-inner {
@@ -17,67 +19,82 @@
 .brand {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 10px;
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 19px;
+  font-weight: 800;
+  font-size: 20px;
   color: var(--ink);
   flex-shrink: 0;
+  letter-spacing: -0.03em;
 }
 .brand-mark {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: var(--ink);
-  color: var(--amber);
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--cool-gradient);
+  color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 800;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.35);
 }
 
 .nav-links {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   flex: 1;
 }
 
 .navlink {
-  padding: 8px 14px;
+  padding: 8px 15px;
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
   color: var(--slate);
-  transition: background 0.12s, color 0.12s;
+  transition: all 0.15s ease;
 }
-.navlink:hover { background: rgba(22,33,62,0.05); color: var(--ink); }
-.navlink.active { color: var(--ink); background: rgba(232,163,61,0.18); }
+.navlink:hover {
+  background: #F1F5F9;
+  color: var(--ink);
+}
+.navlink.active {
+  color: var(--brand-strong);
+  background: #E0F2FE;
+  font-weight: 700;
+}
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   margin-left: auto;
 }
 
 .nav-avatar-link { display: flex; }
 .nav-avatar, .nav-avatar-fallback {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   object-fit: cover;
-  border: 1.5px solid var(--border-strong);
+  border: 2px solid var(--border-strong);
+  transition: border-color 0.15s ease;
+}
+.nav-avatar-link:hover .nav-avatar-fallback,
+.nav-avatar-link:hover .nav-avatar {
+  border-color: var(--brand);
 }
 .nav-avatar-fallback {
-  background: var(--ink);
-  color: var(--amber);
+  background: var(--cool-gradient);
+  color: #FFFFFF;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
   font-size: 14px;
+  box-shadow: 0 2px 6px rgba(14, 165, 233, 0.25);
 }
 
 @media (max-width: 860px) {

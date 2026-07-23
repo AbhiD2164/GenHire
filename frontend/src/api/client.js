@@ -1,6 +1,7 @@
 import axios from "axios";
 
-export const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000/api";
+const rawBase = import.meta.env.VITE_API_BASE || import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+export const API_BASE = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
 
 const client = axios.create({ baseURL: API_BASE });
 

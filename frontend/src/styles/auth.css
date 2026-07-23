@@ -3,17 +3,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  background-image: radial-gradient(circle at 15% 20%, rgba(232,163,61,0.10), transparent 45%),
-                     radial-gradient(circle at 85% 80%, rgba(22,33,62,0.06), transparent 50%);
+  padding: 48px 20px;
+  background-image: radial-gradient(circle at 15% 15%, rgba(14, 165, 233, 0.12), transparent 45%),
+                    radial-gradient(circle at 85% 85%, rgba(37, 99, 235, 0.10), transparent 50%);
 }
 
 .auth-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   padding: 40px;
+  background: var(--paper-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
 }
-.auth-card-wide { max-width: 480px; }
+.auth-card-wide { max-width: 500px; }
 
 .role-toggle {
   display: flex;
@@ -22,16 +26,21 @@
 .role-option {
   flex: 1;
   padding: 12px;
-  border: 1.5px solid var(--border-strong);
+  border: 1.5px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--paper-raised);
+  background: var(--paper);
   font-weight: 600;
   font-size: 14px;
   color: var(--slate);
-  transition: all 0.15s;
+  transition: all 0.18s ease;
+}
+.role-option:hover {
+  border-color: var(--brand);
+  color: var(--ink);
 }
 .role-option.active {
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--amber);
+  border-color: var(--brand-strong);
+  background: #E0F2FE;
+  color: var(--brand-strong);
+  font-weight: 700;
 }
