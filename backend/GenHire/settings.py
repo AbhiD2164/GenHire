@@ -6,9 +6,12 @@ import dj_database_url
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production")
+# Local clones default to development; Render sets this explicitly to False.
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
+if not DEBUG and SECRET_KEY == "dev-secret-key-change-in-production":
+    raise RuntimeError("DJANGO_SECRET_KEY must be set when DJANGO_DEBUG=False")
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if host.strip()]
 RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
 if RENDER_EXTERNAL_HOSTNAME:
     ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
@@ -100,9 +103,17 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "accounts.CustomUser"
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
-# Emails
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+# Emails: use SMTP in deployment; console output remains convenient locally.
+EMAIL_BACKEND = os.environ.get(
+    "EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+)
 DEFAULT_FROM_EMAIL = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@genhire.local")
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "True") == "True"
 
 # ML model storage
 ML_MODEL_DIR = BASE_DIR / "ml_models"
@@ -122,14 +133,32 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.MultiPartParser",
         "rest_framework.parsers.FormParser",
     ),
+    "DEFAULT_THROTTLE_CLASSES": (
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+    ),
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "30/minute",
+        "user": "300/minute",
+    },
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=12),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
     "ROTATE_REFRESH_TOKENS": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# ---------------- RabbitMQ & Cache ----------------
+RABBITMQ_URL = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+RABBITMQ_SUGGESTION_QUEUE = os.environ.get("RABBITMQ_SUGGESTION_QUEUE", "genhire_job_suggestions")
+RABBITMQ_ENABLED = os.environ.get("RABBITMQ_ENABLED", "True") == "True"
+
+# ---------------- Firebase Configuration ----------------
+FIREBASE_CREDENTIALS_PATH = os.environ.get("FIREBASE_CREDENTIALS_PATH", "")
+FIREBASE_API_KEY = os.environ.get("FIREBASE_API_KEY", "")
+FIREBASE_PROJECT_ID = os.environ.get("FIREBASE_PROJECT_ID", "")
 
 # ---------------- CORS ----------------
 CORS_ALLOWED_ORIGINS = [
@@ -141,17 +170,30 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL")
 if FRONTEND_URL:
     CORS_ALLOWED_ORIGINS.append(FRONTEND_URL.rstrip("/"))
 
-CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "True") == "True"
+CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
 CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [origin for origin in [FRONTEND_URL] if origin]
+
+if not DEBUG:
+    SECURE_SSL_REDIRECT = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 
 # Max resume upload size (5 MB)
 RESUME_MAX_SIZE_MB = 5
 
 # ---------------- ATS Engine thresholds ----------------
-# Hard gate: applications scoring below SELECT_THRESHOLD but at/above
-# CONSIDER_THRESHOLD still reach the recruiter labeled "Consider".
-# Anything below CONSIDER_THRESHOLD is auto-rejected and never reaches
-# the recruiter; the candidate only sees a generic not-suitable message.
-ATS_SELECT_THRESHOLD = 0.70
-ATS_CONSIDER_THRESHOLD = 0.40
+# Scoring scale: 0.0 - 1.0 (or 0 - 100%)
+# 80% - 100%: Perfect match (selected / highly recommended)
+# 60% - 79%: Partial match (consider / matching)
+# Below 60%: Rejected by system
+ATS_SELECT_THRESHOLD = 0.80
+ATS_CONSIDER_THRESHOLD = 0.60
+ATS_PERFECT_THRESHOLD = 0.80
+ATS_PARTIAL_THRESHOLD = 0.60

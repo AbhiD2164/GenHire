@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function ResumeScoreCard({ score }) {
   const pct = score == null ? null : Math.round(score * 100);
   const status = pct == null ? "Unknown" : pct >= 70 ? "Strong" : pct >= 40 ? "Consider" : "Weak";

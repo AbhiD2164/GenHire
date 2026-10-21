@@ -45,3 +45,26 @@ export async function myConnections() {
   const res = await client.get("/network/connections/me/");
   return res.data;
 }
+
+export async function getConversations() {
+  const res = await client.get("/network/messages/conversations/");
+  return res.data;
+}
+
+export async function getConversationMessages(partnerId) {
+  const res = await client.get(`/network/messages/${partnerId}/`);
+  return res.data;
+}
+
+export async function sendMessage(partnerId, { content, message_type = "private" }) {
+  const res = await client.post(`/network/messages/${partnerId}/`, {
+    content,
+    message_type,
+  });
+  return res.data;
+}
+
+export async function getUnreadMessageCount() {
+  const res = await client.get("/network/messages/unread-count/");
+  return res.data;
+}

@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { myConnections, respondConnectionRequest } from "../api/network";
+import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
 export default function Network() {
+  const { profile } = useAuth();
   const [data, setData] = useState({ connections: [], pending_received: [], pending_sent: [] });
   const [loading, setLoading] = useState(true);
   const { showToast } = useToast();
@@ -62,12 +64,23 @@ export default function Network() {
         ) : (
           <div className="connection-list">
             {data.connections.map((c) => {
-              const other = c.from_user_name === undefined ? c : c;
+              const partnerId = c.from_user === profile?.user_id ? c.to_user : c.from_user;
+              const partnerName = c.from_user === profile?.user_id ? c.to_user_name : c.from_user_name;
+              const partnerHeadline = c.from_user === profile?.user_id ? c.to_user_headline : c.from_user_headline;
+
               return (
-                <div key={c.id} className="card connection-row">
+                <div key={c.id} className="card connection-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div>
-                    <strong>{c.from_user_name}</strong> ↔ <strong>{c.to_user_name}</strong>
-                    <p className="text-sm muted">Connected</p>
+                    <strong>{partnerName}</strong>
+                    <p className="text-sm muted" style={{ margin: "2px 0 0" }}>{partnerHeadline || "Connected Member"}</p>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <Link to={`/messages?to=${partnerId}`} className="btn btn-outline btn-sm">
+                      Message
+                    </Link>
+                    <Link to={`/profile/${partnerId}`} className="btn btn-ghost btn-sm">
+                      Profile
+                    </Link>
                   </div>
                 </div>
               );

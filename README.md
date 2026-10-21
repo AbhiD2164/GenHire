@@ -173,12 +173,17 @@ All endpoints (except signup/login) require `Authorization: Bearer <access_token
 
 ## Production deployment notes
 
-1. Set `DJANGO_DEBUG=False` and provide a strong `DJANGO_SECRET_KEY` in `.env`
-2. Run `python manage.py collectstatic` and serve `staticfiles/` from nginx/CDN
-3. Use gunicorn: `gunicorn GenHire.wsgi:application --bind 0.0.0.0:8000`
-4. Serve `media/` files from nginx (not Django) in production
-5. Build the frontend: `npm run build` — serve `dist/` from nginx or any static host
-6. Update `CORS_ALLOWED_ORIGINS` in `settings.py` to your production domain
+1. On Render, create a web service rooted at `backend/` with build command `pip install -r requirements.txt && python manage.py migrate && python manage.py collectstatic --noinput` and start command `gunicorn GenHire.wsgi:application --bind 0.0.0.0:$PORT`.
+2. Set `DJANGO_DEBUG=False`, a strong `DJANGO_SECRET_KEY`, and Neon’s pooled `DATABASE_URL` with `sslmode=require`. `dj-database-url` reads this automatically.
+3. Configure production mail with `EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend`, `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS=True`, and `DEFAULT_FROM_EMAIL`. Without these, signup OTP and reset emails are not delivered.
+4. Set `FRONTEND_URL=https://<your-vercel-domain>` and `VITE_API_BASE=https://<your-render-domain>/api` in Vercel. The frontend otherwise defaults to localhost.
+5. Set `GOOGLE_CLIENT_ID` on Render and `VITE_GOOGLE_CLIENT_ID` on Vercel, and add the Vercel origin to Google’s authorized origins.
+6. Do not use local `media/` storage for production resumes/avatars: Render’s filesystem is ephemeral. Configure durable object storage before enabling real resume uploads.
+7. Render free instances may sleep, so synchronous resume parsing and cold starts can be slow.
+8. The repository includes `render.yaml` for the backend service and `/health/` for Render health checks. Review the `sync: false` environment variables in the Render dashboard before deploying.
+9. API throttling is enabled at 30 requests/minute for anonymous clients and 300 requests/minute for authenticated users to protect free-tier resources.
+
+The project implements email OTP verification, JWT login, password-reset links, Google ID-token verification, and role authorization. It does **not** implement mobile-number storage, SMS OTP delivery, or a device approval popup. Those require a phone field, an SMS provider such as Twilio/MessageBird, rate limits, consent/audit records, and a separate verification flow.
 
 ---
 

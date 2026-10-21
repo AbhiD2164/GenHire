@@ -81,10 +81,10 @@ class Job(models.Model):
 
 class Application(models.Model):
     STATUS_CHOICES = (
-        ("pending", "Pending"),
+        ("applied", "Applied"),
         ("selected", "Selected"),
+        ("rejected", "Rejected"),
         ("consider", "Consider"),
-        ("rejected", "Rejected"),  # hard-gated: never surfaced to recruiter
     )
 
     job = models.ForeignKey(Job, on_delete=models.CASCADE, related_name="applications")
@@ -96,11 +96,14 @@ class Application(models.Model):
     parsed_skills = models.TextField(blank=True)
 
     score = models.FloatField(default=0)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="applied")
+    rejection_stage = models.CharField(max_length=50, blank=True, help_text="e.g. rejected_by_system, rejected_by_recruiter")
+    rejection_reason = models.TextField(blank=True, help_text="Detailed stage reason for rejection")
     feedback = models.TextField(blank=True, help_text="Internal feedback shown to recruiter")
     candidate_message = models.CharField(max_length=255, blank=True, help_text="Message shown to the candidate")
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["-score", "-created_at"]
@@ -111,4 +114,4 @@ class Application(models.Model):
 
     @property
     def visible_to_recruiter(self):
-        return self.status in ("selected", "consider")
+        return True

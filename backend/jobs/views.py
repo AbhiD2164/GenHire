@@ -9,6 +9,8 @@ from .serializers import (
     JobSerializer, JobWriteSerializer, ApplicationSerializer, ApplicationCandidateView,
 )
 from ats.engine import process_resume
+from ats.rabbitmq_cache import get_cached_suggestions, compute_runtime_suggestions
+from accounts.firebase_service import send_immediate_application_result_email
 
 
 class IsRecruiter(permissions.BasePermission):
@@ -84,11 +86,11 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class ApplyToJobView(APIView):
     """
-    Candidate applies with a resume file. The resume is parsed immediately
-    and the hard-gate decision is made synchronously, so the response the
-    candidate gets back already reflects the final outcome message —
-    either the success message or the generic not-suitable message. The
-    candidate response NEVER includes the score or missing-skills detail.
+    Candidate applies with a resume file.
+    Validates file format (strictly PDF or Word .docx/.doc only).
+    Runs automated ATS evaluation, checks phishing URLs and unstructured format,
+    calculates score, sends immediate result email to candidate, and triggers
+    RabbitMQ runtime job suggestions.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -114,10 +116,14 @@ class ApplyToJobView(APIView):
 
         ext = resume.name.lower().rsplit(".", 1)[-1] if "." in resume.name else ""
         if ext not in ("pdf", "docx", "doc"):
-            return Response({"detail": "Resume must be a PDF or Word (.docx) file."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": f"Invalid file format (.{ext}). Only PDF and Word (.docx, .doc) files are acceptable."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         application = Application.objects.create(job=job, applicant=request.user, resume=resume)
 
+        # Process resume, perform security check, score and email immediately
         process_resume(application)
 
         return Response(
@@ -127,20 +133,24 @@ class ApplyToJobView(APIView):
 
 
 class MyApplicationsView(generics.ListAPIView):
-    """Candidate's own application history — gated message only."""
+    """
+    Candidate's own application history with real-time status and scoring.
+    Supports filtering by status: 'applied', 'selected', 'rejected'.
+    """
     serializer_class = ApplicationCandidateView
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Application.objects.filter(applicant=self.request.user).select_related("job")
+        qs = Application.objects.filter(applicant=self.request.user).select_related("job")
+        status_filter = self.request.query_params.get("status")
+        if status_filter in ("applied", "selected", "rejected"):
+            qs = qs.filter(status=status_filter)
+        return qs.order_by("-created_at")
 
 
 class JobApplicationsView(generics.ListAPIView):
     """
-    Recruiter view of applicants for one of their jobs. This is the hard
-    gate enforcement point: only applications with status in
-    (selected, consider) are ever returned here — rejected applications
-    are excluded entirely, not just hidden in the UI.
+    Recruiter view of applicants for a job posted by the recruiter.
     """
     serializer_class = ApplicationSerializer
     permission_classes = [permissions.IsAuthenticated, IsRecruiter]
@@ -151,11 +161,53 @@ class JobApplicationsView(generics.ListAPIView):
         if not job:
             raise PermissionDenied("You can only view applications for jobs you posted.")
 
+        qs = Application.objects.filter(job=job).select_related("applicant", "job")
         status_filter = self.request.query_params.get("status")
-        qs = Application.objects.filter(job=job, status__in=["selected", "consider"]).select_related("applicant", "job")
-        if status_filter in ("selected", "consider"):
+        if status_filter:
             qs = qs.filter(status=status_filter)
-        return qs.order_by("-score")
+        return qs.order_by("-score", "-created_at")
+
+
+class RecruiterApplicationDecisionView(APIView):
+    """
+    Allows recruiter to accept/select or reject an application with custom reason.
+    Immediately updates application status and sends result email to candidate
+    to eliminate communication delays.
+    """
+    permission_classes = [permissions.IsAuthenticated, IsRecruiter]
+
+    def post(self, request, application_id):
+        application = Application.objects.select_related("job", "applicant").filter(id=application_id).first()
+        if not application:
+            return Response({"detail": "Application not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if application.job.created_by_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("You can only manage applications for jobs you posted.")
+
+        action = request.data.get("action", "").lower()
+        reason = request.data.get("reason", "").strip()
+
+        if action == "select":
+            application.status = "selected"
+            application.feedback = f"Selected by recruiter: {reason or 'Strong candidate qualifications'}"
+            application.candidate_message = f"Congratulations! You were selected by the hiring team at {application.job.company_name}."
+            application.rejection_stage = ""
+            application.rejection_reason = ""
+        elif action == "reject":
+            application.status = "rejected"
+            application.rejection_stage = "rejected_by_recruiter"
+            application.rejection_reason = reason or "Better skills in other candidates were found"
+            application.feedback = f"Rejected by recruiter: {application.rejection_reason}"
+            application.candidate_message = f"Application rejected by recruiter: {application.rejection_reason}."
+        else:
+            return Response({"detail": "Invalid action. Choose 'select' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
+
+        application.save()
+
+        # Send immediate email notification to candidate
+        send_immediate_application_result_email(application)
+
+        return Response(ApplicationSerializer(application).data)
 
 
 class RecruiterDashboardView(APIView):
@@ -165,3 +217,26 @@ class RecruiterDashboardView(APIView):
         jobs = Job.objects.filter(created_by=request.user)
         data = JobSerializer(jobs, many=True, context={"request": request}).data
         return Response(data)
+
+
+class RuntimeSuggestionsView(APIView):
+    """
+    Returns runtime job suggestions powered by RabbitMQ suggestion queue and cache.
+    - If user has a matching resume: suggests roles similar to their profile/applied role.
+    - If user does not have a matching resume: suggests roles directly matching their extracted resume skills.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        cached = get_cached_suggestions(request.user.id)
+        if cached:
+            return Response({"suggestions": cached, "source": "cache"})
+
+        # Compute fresh suggestions
+        latest_app = Application.objects.filter(applicant=request.user).order_by("-created_at").first()
+        suggestions = compute_runtime_suggestions(
+            user=request.user,
+            applied_job=latest_app.job if latest_app else None,
+            resume_score=latest_app.score if latest_app else None,
+        )
+        return Response({"suggestions": suggestions, "source": "rabbitmq_computed"})

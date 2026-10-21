@@ -29,8 +29,16 @@ export default function JobDetail() {
     setApplying(true);
     try {
       const result = await applyToJob(id, file);
-      const isSuccess = result.candidate_message?.toLowerCase().includes("successfully");
-      setOutcome({ success: isSuccess, message: result.candidate_message });
+      const isSelected = result.status === "selected";
+      const isRejected = result.status === "rejected";
+      setOutcome({
+        status: result.status,
+        scorePercentage: result.score_percentage || Math.round((result.score || 0) * 100),
+        message: result.candidate_message,
+        stage: result.rejection_stage,
+        reason: result.rejection_reason,
+      });
+      showToast("Application evaluated and result sent via email!", "success");
     } catch (err) {
       showToast(err.response?.data?.detail || "Could not submit application.", "error");
     } finally {
@@ -138,11 +146,32 @@ export default function JobDetail() {
 }
 
 function OutcomeCard({ outcome }) {
+  const isSelected = outcome.status === "selected";
+  const isRejected = outcome.status === "rejected";
+
   return (
-    <div className={`outcome-card ${outcome.success ? "outcome-success" : "outcome-fail"}`}>
-      <div className="outcome-icon">{outcome.success ? "✓" : "✕"}</div>
-      <h4>{outcome.success ? "Application submitted" : "Not quite a match"}</h4>
-      <p className="text-sm">{outcome.message}</p>
+    <div className={`outcome-card ${isSelected ? "outcome-success" : isRejected ? "outcome-fail" : "outcome-success"}`} style={{ padding: 18 }}>
+      <div className="outcome-icon">{isSelected ? "✓" : isRejected ? "✕" : "ℹ"}</div>
+      <h4 style={{ margin: "4px 0" }}>
+        {isSelected ? "Application Selected!" : isRejected ? "Application Rejected by System" : "Application Received"}
+      </h4>
+      <div style={{ margin: "6px 0 10px" }}>
+        <span className="tag" style={{ fontWeight: 600 }}>
+          Resume ATS Score: {outcome.scorePercentage}%
+        </span>
+      </div>
+      <p className="text-sm" style={{ margin: "6px 0" }}>{outcome.message}</p>
+      {isRejected && outcome.reason && (
+        <p className="text-xs" style={{ color: "#ef4444", marginTop: 6 }}>
+          <strong>Reason: </strong>{outcome.reason}
+        </p>
+      )}
+      <p className="text-xs muted" style={{ marginTop: 10 }}>
+        An evaluation summary email was dispatched to your inbox. You can monitor this anytime on your Dashboard under 'Applied Jobs'.
+      </p>
+      <Link to="/dashboard" className="btn btn-outline btn-sm btn-block" style={{ marginTop: 12 }}>
+        Go to Dashboard
+      </Link>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { getFeed, createPost, toggleLike, addComment } from "../api/network";
 import { useAuth } from "../context/AuthContext";

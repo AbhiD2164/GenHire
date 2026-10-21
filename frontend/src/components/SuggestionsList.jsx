@@ -1,5 +1,3 @@
-import React from "react";
-
 export default function SuggestionsList({ suggestions }) {
   if (!suggestions || suggestions.length === 0) {
     return (

@@ -33,8 +33,10 @@ export async function applyToJob(jobId, resumeFile) {
   return res.data;
 }
 
-export async function myApplications() {
-  const res = await client.get("/jobs/my-applications/");
+export async function myApplications(status) {
+  const res = await client.get("/jobs/my-applications/", {
+    params: status ? { status } : {},
+  });
   return res.data;
 }
 
@@ -47,5 +49,18 @@ export async function jobApplications(jobId, statusFilter) {
 
 export async function recruiterDashboard() {
   const res = await client.get("/jobs/recruiter/dashboard/");
+  return res.data;
+}
+
+export async function applicationDecision(applicationId, { action, reason }) {
+  const res = await client.post(`/jobs/applications/${applicationId}/decision/`, {
+    action,
+    reason,
+  });
+  return res.data;
+}
+
+export async function getRuntimeSuggestions() {
+  const res = await client.get("/jobs/runtime-suggestions/");
   return res.data;
 }

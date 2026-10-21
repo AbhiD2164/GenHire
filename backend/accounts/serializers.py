@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from .models import CustomUser, Profile, WorkExperience
+from .verification import verify_recruiter_profile
 
 
 class WorkExperienceSerializer(serializers.ModelSerializer):
@@ -16,17 +17,22 @@ class WorkExperienceSerializer(serializers.ModelSerializer):
 class ProfileSerializer(serializers.ModelSerializer):
     experiences = WorkExperienceSerializer(many=True, read_only=True)
     full_name = serializers.SerializerMethodField()
-    username = serializers.CharField(source="user.username", read_only=True)
+    username = serializers.CharField(source="user.username", required=False)
+    email = serializers.EmailField(source="user.email", read_only=True)
     role = serializers.CharField(source="user.role", read_only=True)
     user_id = serializers.IntegerField(source="user.id", read_only=True)
+    is_recruiter_verified = serializers.BooleanField(source="user.is_recruiter_verified", read_only=True)
+    recruiter_verification_notes = serializers.CharField(source="user.recruiter_verification_notes", read_only=True)
+    is_candidate_verified = serializers.BooleanField(source="user.is_candidate_verified", read_only=True)
 
     class Meta:
         model = Profile
         fields = [
-            "user_id", "username", "role", "full_name",
+            "user_id", "username", "email", "role", "full_name",
             "headline", "bio", "location", "avatar",
             "skills", "total_experience_months",
             "resume", "resume_updated_at", "company_name",
+            "is_recruiter_verified", "recruiter_verification_notes", "is_candidate_verified",
             "experiences",
         ]
 
@@ -38,10 +44,20 @@ class SignupSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, validators=[validate_password])
     first_name = serializers.CharField(required=False, allow_blank=True)
     last_name = serializers.CharField(required=False, allow_blank=True)
+    company_name = serializers.CharField(required=False, allow_blank=True)
+    company_website = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = CustomUser
-        fields = ["username", "email", "password", "role", "first_name", "last_name"]
+        fields = ["username", "email", "password", "role", "first_name", "last_name", "company_name", "company_website"]
+
+    def validate_username(self, value):
+        val = value.strip()
+        if not val:
+            raise serializers.ValidationError("Username cannot be empty.")
+        if CustomUser.objects.filter(username__iexact=val).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return val
 
     def validate_email(self, value):
         if CustomUser.objects.filter(email__iexact=value).exists():
@@ -50,10 +66,35 @@ class SignupSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        user = CustomUser(**validated_data)
+        role = validated_data.get("role", "applicant")
+        company_name = validated_data.get("company_name", "").strip()
+        company_website = validated_data.get("company_website", "").strip()
+
+        is_recruiter_verified = False
+        recruiter_verification_notes = ""
+        is_candidate_verified = False
+
+        if role == "recruiter":
+            is_recruiter_verified, recruiter_verification_notes = verify_recruiter_profile(
+                validated_data["email"], company_name, company_website
+            )
+        else:
+            is_candidate_verified = True
+
+        user = CustomUser(
+            **validated_data,
+            is_recruiter_verified=is_recruiter_verified,
+            recruiter_verification_notes=recruiter_verification_notes,
+            is_candidate_verified=is_candidate_verified,
+        )
         user.set_password(password)
+        user.email_verified = False
         user.save()
-        Profile.objects.create(user=user)
+
+        Profile.objects.create(
+            user=user,
+            company_name=company_name if role == "recruiter" else "",
+        )
         return user
 
 
@@ -61,7 +102,12 @@ class UserSummarySerializer(serializers.ModelSerializer):
     headline = serializers.CharField(source="profile.headline", read_only=True, default="")
     location = serializers.CharField(source="profile.location", read_only=True, default="")
     avatar = serializers.ImageField(source="profile.avatar", read_only=True, default=None)
+    company_name = serializers.CharField(read_only=True, default="")
+    is_recruiter_verified = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = CustomUser
-        fields = ["id", "username", "first_name", "last_name", "role", "headline", "location", "avatar"]
+        fields = [
+            "id", "username", "first_name", "last_name", "role",
+            "headline", "location", "avatar", "company_name", "is_recruiter_verified"
+        ]

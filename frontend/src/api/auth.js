@@ -56,9 +56,25 @@ export async function searchCandidates(params) {
   return res.data;
 }
 
-export async function googleSignIn(id_token) {
-  const res = await client.post("/auth/google/", { id_token });
+export async function googleSignIn(id_token, role = "applicant") {
+  const res = await client.post("/auth/google/", { id_token, role });
   if (res.data.access && res.data.refresh) setTokens({ access: res.data.access, refresh: res.data.refresh });
+  return res.data;
+}
+
+export async function firebaseSignIn(payload) {
+  const res = await client.post("/auth/firebase-login/", payload);
+  if (res.data.access && res.data.refresh) setTokens({ access: res.data.access, refresh: res.data.refresh });
+  return res.data;
+}
+
+export async function requestEmailVerification(email) {
+  const res = await client.post("/auth/email-verification/request/", { email });
+  return res.data;
+}
+
+export async function confirmEmailVerification(email, code) {
+  const res = await client.post("/auth/email-verification/confirm/", { email, code });
   return res.data;
 }
 

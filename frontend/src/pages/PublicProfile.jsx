@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { getPublicProfile } from "../api/auth";
 import { sendConnectionRequest } from "../api/network";
 import { useAuth } from "../context/AuthContext";
@@ -49,9 +49,14 @@ export default function PublicProfile() {
             <p className="text-sm muted">{profile.location}</p>
           </div>
           {!isMe && (
-            <button className="btn btn-amber" style={{ marginLeft: "auto" }} onClick={handleConnect} disabled={connectSent}>
-              {connectSent ? "Request sent" : "Connect"}
-            </button>
+            <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
+              <Link to={`/messages?to=${profile.user_id}`} className="btn btn-outline btn-sm">
+                Message
+              </Link>
+              <button className="btn btn-primary btn-sm" onClick={handleConnect} disabled={connectSent}>
+                {connectSent ? "Request sent" : "Connect"}
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Post, Like, Comment, Connection
+from .models import Post, Like, Comment, Connection, Message
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -104,3 +104,39 @@ class ConnectionSerializer(serializers.ModelSerializer):
             return obj.to_user.profile.headline
         except Exception:
             return ""
+
+
+class MessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    sender_username = serializers.CharField(source="sender.username", read_only=True)
+    sender_avatar = serializers.SerializerMethodField()
+    recipient_name = serializers.SerializerMethodField()
+    recipient_username = serializers.CharField(source="recipient.username", read_only=True)
+    recipient_avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Message
+        fields = [
+            "id", "sender", "sender_name", "sender_username", "sender_avatar",
+            "recipient", "recipient_name", "recipient_username", "recipient_avatar",
+            "content", "message_type", "is_read", "created_at"
+        ]
+        read_only_fields = ["sender", "is_read", "created_at"]
+
+    def get_sender_name(self, obj):
+        return obj.sender.get_full_name() or obj.sender.username
+
+    def get_recipient_name(self, obj):
+        return obj.recipient.get_full_name() or obj.recipient.username
+
+    def get_sender_avatar(self, obj):
+        try:
+            return obj.sender.profile.avatar.url if obj.sender.profile.avatar else None
+        except Exception:
+            return None
+
+    def get_recipient_avatar(self, obj):
+        try:
+            return obj.recipient.profile.avatar.url if obj.recipient.profile.avatar else None
+        except Exception:
+            return None

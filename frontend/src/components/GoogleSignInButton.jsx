@@ -34,7 +34,7 @@ function loadGoogleScript() {
   return googleScriptPromise;
 }
 
-export default function GoogleSignInButton({ onSuccess }) {
+export default function GoogleSignInButton({ onSuccess, role = "applicant" }) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +42,7 @@ export default function GoogleSignInButton({ onSuccess }) {
     const id_token = credentialResponse?.credential;
     if (!id_token) return showToast("Google sign-in failed.", "error");
 
-    googleSignIn(id_token)
+    googleSignIn(id_token, role)
       .then((data) => {
         showToast("Signed in with Google.", "success");
         if (onSuccess) onSuccess(data);
@@ -78,7 +78,7 @@ export default function GoogleSignInButton({ onSuccess }) {
 
   return (
     <button type="button" className="btn btn-danger" onClick={handleClick} disabled={loading}>
-      {loading ? "Loading Google…" : "Sign in with Google"}
+      {loading ? "Loading Google…" : "Continue with Google"}
     </button>
   );
 }

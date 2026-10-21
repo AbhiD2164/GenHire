@@ -14,7 +14,7 @@ export default function PasswordResetRequest() {
       const frontendUrl = window.location.origin + "/reset-password";
       await passwordResetRequest(email, frontendUrl);
       showToast("If an account exists, a reset email was sent.", "success");
-    } catch (err) {
+    } catch {
       showToast("Could not send reset email.", "error");
     } finally {
       setLoading(false);

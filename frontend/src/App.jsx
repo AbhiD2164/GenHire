@@ -8,6 +8,7 @@ import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import PasswordResetRequest from "./pages/PasswordResetRequest";
 import PasswordResetConfirm from "./pages/PasswordResetConfirm";
+import EmailVerification from "./pages/EmailVerification";
 import Feed from "./pages/Feed";
 import JobList from "./pages/JobList";
 import JobDetail from "./pages/JobDetail";
@@ -17,8 +18,10 @@ import Dashboard from "./pages/Dashboard";
 import Profile from "./pages/Profile";
 import PublicProfile from "./pages/PublicProfile";
 import Network from "./pages/Network";
+import Messages from "./pages/Messages";
 import CandidateSearch from "./pages/CandidateSearch";
 import ResumeAnalysis from "./pages/ResumeAnalysis";
+import Landing from "./pages/Landing";
 
 export default function App() {
   return (
@@ -32,7 +35,8 @@ export default function App() {
             <Route path="/signup" element={<Signup />} />
             <Route path="/forgot-password" element={<PasswordResetRequest />} />
             <Route path="/reset-password" element={<PasswordResetConfirm />} />
-            <Route path="/" element={<Navigate to="/feed" replace />} />
+            <Route path="/verify-email" element={<EmailVerification />} />
+            <Route path="/" element={<Landing />} />
 
             {/* Protected – any authenticated user */}
             <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
@@ -43,6 +47,7 @@ export default function App() {
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/profile/:userId" element={<ProtectedRoute><PublicProfile /></ProtectedRoute>} />
             <Route path="/network" element={<ProtectedRoute><Network /></ProtectedRoute>} />
+            <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
 
             {/* Protected – recruiter only */}
             <Route path="/jobs/new" element={<ProtectedRoute roleRequired="recruiter"><CreateJob /></ProtectedRoute>} />

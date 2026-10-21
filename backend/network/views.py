@@ -4,8 +4,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 
-from .models import Post, Like, Comment, Connection
-from .serializers import PostSerializer, CommentSerializer, ConnectionSerializer
+from .models import Post, Like, Comment, Connection, Message
+from .serializers import PostSerializer, CommentSerializer, ConnectionSerializer, MessageSerializer
 
 
 class FeedView(generics.ListCreateAPIView):
@@ -128,3 +128,83 @@ class MyConnectionsView(APIView):
             "pending_received": ConnectionSerializer(pending_received, many=True).data,
             "pending_sent": ConnectionSerializer(pending_sent, many=True).data,
         })
+
+
+class ConversationListView(APIView):
+    """
+    List all active conversation threads for the current user.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        messages = Message.objects.filter(
+            Q(sender=user) | Q(recipient=user)
+        ).select_related("sender", "recipient", "sender__profile", "recipient__profile").order_by("-created_at")
+
+        conversations = {}
+        for msg in messages:
+            partner = msg.recipient if msg.sender_id == user.id else msg.sender
+            if partner.id not in conversations:
+                unread = Message.objects.filter(sender=partner, recipient=user, is_read=False).count()
+                conversations[partner.id] = {
+                    "partner_id": partner.id,
+                    "partner_name": partner.get_full_name() or partner.username,
+                    "partner_username": partner.username,
+                    "partner_avatar": partner.profile.avatar.url if hasattr(partner, "profile") and partner.profile.avatar else None,
+                    "partner_headline": partner.profile.headline if hasattr(partner, "profile") else "",
+                    "last_message": msg.content,
+                    "last_message_time": msg.created_at,
+                    "unread_count": unread,
+                    "message_type": msg.message_type,
+                }
+
+        return Response(list(conversations.values()))
+
+
+class ConversationMessagesView(APIView):
+    """
+    Get messages between request.user and a partner, and send new messages.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, partner_id):
+        user = request.user
+        # Mark incoming messages as read
+        Message.objects.filter(sender_id=partner_id, recipient=user, is_read=False).update(is_read=True)
+
+        messages = Message.objects.filter(
+            Q(sender=user, recipient_id=partner_id) | Q(sender_id=partner_id, recipient=user)
+        ).select_related("sender", "recipient").order_by("created_at")
+
+        return Response(MessageSerializer(messages, many=True).data)
+
+    def post(self, request, partner_id):
+        user = request.user
+        content = request.data.get("content", "").strip()
+        message_type = request.data.get("message_type", "private")
+
+        if not content:
+            return Response({"detail": "Message content cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+
+        from accounts.models import CustomUser
+        try:
+            partner = CustomUser.objects.get(id=partner_id)
+        except CustomUser.DoesNotExist:
+            return Response({"detail": "Recipient not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        msg = Message.objects.create(
+            sender=user,
+            recipient=partner,
+            content=content,
+            message_type=message_type,
+        )
+        return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
+
+
+class UnreadMessageCountView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        count = Message.objects.filter(recipient=request.user, is_read=False).count()
+        return Response({"unread_count": count})

@@ -34,11 +34,6 @@ class JobSerializer(serializers.ModelSerializer):
 
 
 class JobWriteSerializer(serializers.ModelSerializer):
-    """
-    Accepts convenient years-based experience input from the frontend and
-    converts to months for storage, so the form doesn't need to deal with
-    raw month integers.
-    """
     min_experience_years = serializers.FloatField(write_only=True, required=False, default=0)
     max_experience_years = serializers.FloatField(write_only=True, required=False, allow_null=True)
 
@@ -77,24 +72,31 @@ class ApplicationSerializer(serializers.ModelSerializer):
     company_name = serializers.CharField(source="job.company_name", read_only=True)
     applicant_name = serializers.SerializerMethodField()
     applicant_email = serializers.CharField(source="applicant.email", read_only=True)
+    applicant_username = serializers.CharField(source="applicant.username", read_only=True)
     parsed_experience_label = serializers.SerializerMethodField()
+    score_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = Application
         fields = [
             "id", "job", "job_title", "company_name",
-            "applicant", "applicant_name", "applicant_email",
+            "applicant", "applicant_name", "applicant_username", "applicant_email",
             "resume", "parsed_location", "parsed_experience_months",
             "parsed_experience_label", "parsed_skills",
-            "score", "status", "feedback", "candidate_message", "created_at",
+            "score", "score_percentage", "status",
+            "rejection_stage", "rejection_reason",
+            "feedback", "candidate_message", "created_at", "updated_at",
         ]
         read_only_fields = [
             "applicant", "parsed_location", "parsed_experience_months",
-            "parsed_skills", "score", "status", "feedback", "candidate_message", "created_at",
+            "parsed_skills", "score", "score_percentage", "created_at", "updated_at",
         ]
 
     def get_applicant_name(self, obj):
         return obj.applicant.get_full_name() or obj.applicant.username
+
+    def get_score_percentage(self, obj):
+        return round((obj.score or 0) * 100, 1)
 
     def get_parsed_experience_label(self, obj):
         from ats.experience_extraction import months_to_label
@@ -103,14 +105,23 @@ class ApplicationSerializer(serializers.ModelSerializer):
 
 class ApplicationCandidateView(serializers.ModelSerializer):
     """
-    Slimmer view returned to the candidate themself: NO score, NO recruiter
-    feedback, NO missing-skill breakdown — only the gated outcome message,
-    consistent with the requirement that candidates only ever see a generic
-    success / not-suitable message, never the scoring internals.
+    Candidate's application view showing application status, resume score,
+    and clear stage/reason for rejection or selection.
     """
     job_title = serializers.CharField(source="job.title", read_only=True)
     company_name = serializers.CharField(source="job.company_name", read_only=True)
+    location = serializers.CharField(source="job.location", read_only=True)
+    work_mode = serializers.CharField(source="job.work_mode", read_only=True)
+    score_percentage = serializers.SerializerMethodField()
 
     class Meta:
         model = Application
-        fields = ["id", "job", "job_title", "company_name", "candidate_message", "created_at"]
+        fields = [
+            "id", "job", "job_title", "company_name", "location", "work_mode",
+            "score", "score_percentage", "status",
+            "rejection_stage", "rejection_reason",
+            "candidate_message", "feedback", "created_at", "updated_at",
+        ]
+
+    def get_score_percentage(self, obj):
+        return round((obj.score or 0) * 100, 1)

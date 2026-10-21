@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { analyzeResume, recommendJobs } from '../api/ats';
+import { analyzeResume } from '../api/ats';
 import { useToast } from '../context/ToastContext';
 import ResumeScoreCard from '../components/ResumeScoreCard';
 import SuggestionsList from '../components/SuggestionsList';

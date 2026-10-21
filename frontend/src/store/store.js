@@ -1,7 +1,5 @@
 import { configureStore } from '@reduxjs/toolkit'
-import { combineReducers } from 'redux'
 
-// placeholder slices
-const rootReducer = combineReducers({})
+const rootReducer = (state = {}) => state
 
 export default configureStore({ reducer: rootReducer })

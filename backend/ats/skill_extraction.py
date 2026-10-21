@@ -173,3 +173,27 @@ def extract_present_skills(resume_text, candidate_skill_universe):
         if skill_match(skill, normalized):
             found.append(skill)
     return found
+
+
+def tokenized_relevance_score(resume_text, job_text):
+    """Compare resume and job language using token and bigram overlap.
+
+    This is intentionally optional: if scikit-learn is unavailable or either
+    document is empty, the deterministic skill matcher remains authoritative.
+    """
+    if not resume_text.strip() or not job_text.strip():
+        return 0.0
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+
+        vectorizer = TfidfVectorizer(
+            lowercase=True,
+            stop_words="english",
+            ngram_range=(1, 2),
+            token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z0-9+#.\-]{1,}\b",
+        )
+        matrix = vectorizer.fit_transform([resume_text, job_text])
+        return float(cosine_similarity(matrix[0:1], matrix[1:2])[0][0])
+    except (ImportError, ValueError):
+        return 0.0
