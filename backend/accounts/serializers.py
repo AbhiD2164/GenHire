@@ -85,9 +85,8 @@ class SignupSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         password = validated_data.pop("password")
-        role = validated_data.get("role", "applicant")
-        company_name = validated_data.get("company_name", "").strip()
-        company_website = validated_data.get("company_website", "").strip()
+        company_name = validated_data.pop("company_name", "").strip()
+        company_website = validated_data.pop("company_website", "").strip()
 
         # Profile fields
         headline = validated_data.pop("headline", "").strip()
@@ -97,20 +96,18 @@ class SignupSerializer(serializers.ModelSerializer):
 
         is_recruiter_verified = False
         recruiter_verification_notes = ""
-        is_candidate_verified = False
-
-        if role == "recruiter":
+        if company_name:
             is_recruiter_verified, recruiter_verification_notes = verify_recruiter_profile(
                 validated_data["email"], company_name, company_website
             )
-        else:
-            is_candidate_verified = True
+
+        validated_data.setdefault("role", "user")
 
         user = CustomUser(
             **validated_data,
             is_recruiter_verified=is_recruiter_verified,
             recruiter_verification_notes=recruiter_verification_notes,
-            is_candidate_verified=is_candidate_verified,
+            is_candidate_verified=True,
         )
         # Apply cryptographic deterministic salt bias to password
         salt_bias = get_user_password_bias(user.username)
@@ -120,11 +117,11 @@ class SignupSerializer(serializers.ModelSerializer):
 
         Profile.objects.create(
             user=user,
-            headline=headline or ("Hiring Talent" if role == "recruiter" else "Seeking Opportunities"),
+            headline=headline or "GenHire Professional",
             industry=industry or "General",
             location=location,
             bio=bio,
-            company_name=company_name if role == "recruiter" else "",
+            company_name=company_name,
         )
         return user
 

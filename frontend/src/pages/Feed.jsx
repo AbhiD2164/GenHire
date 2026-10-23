@@ -71,14 +71,14 @@ export default function Feed() {
                 <Link to="/profile">
                   <h3>{profile.full_name || profile.username}</h3>
                 </Link>
-                <p>{profile.headline || (profile.role === "recruiter" ? "Hiring Leader" : "Professional Member")}</p>
+                <p>{profile.headline || "Professional Member"}</p>
                 {profile.location && <span className="text-xs muted" style={{ display: "block", marginTop: 4 }}>📍 {profile.location}</span>}
               </div>
 
               <div className="user-mini-stats">
                 <div className="stat-row">
                   <span>Profile status</span>
-                  <strong>{profile.is_recruiter_verified ? "Verified Recruiter" : "Active Member"}</strong>
+                  <strong>{profile.company_name ? `Corporate (${profile.company_name})` : "Active Member"}</strong>
                 </div>
                 <div className="stat-row">
                   <span>Total experience</span>
@@ -414,7 +414,7 @@ function FeedPostCard({ post, onTagClick }) {
               <strong style={{ fontSize: "14.5px", color: "var(--ink)" }}>{post.author_name}</strong>
             </Link>
             <p className="muted text-xs" style={{ margin: "1px 0" }}>
-              {post.author_headline || (post.author_role === "recruiter" ? "Recruiter" : "Professional")}
+              {post.author_headline || "GenHire Professional"}
             </p>
             <span className="text-xs muted">{new Date(post.created_at).toLocaleDateString()}</span>
           </div>

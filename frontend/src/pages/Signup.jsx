@@ -13,13 +13,13 @@ export default function Signup() {
     password: "",
     first_name: "",
     last_name: "",
-    role: "applicant",
     headline: "",
     industry: "Information Technology",
     location: "",
     company_name: "",
     company_website: "",
   });
+  const [showCompanyFields, setShowCompanyFields] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const { showToast } = useToast();
@@ -56,7 +56,6 @@ export default function Signup() {
       const { idToken } = await loginWithFirebaseGoogle();
       await firebaseSignIn({
         id_token: idToken,
-        role: form.role,
         company_name: form.company_name,
         company_website: form.company_website,
       });
@@ -77,7 +76,7 @@ export default function Signup() {
           <span className="eyebrow" style={{ margin: "0 auto 6px" }}>Unified Registration</span>
           <h1 style={{ fontSize: 24, margin: "0 0 6px", fontWeight: 800 }}>Create Your GenHire Account</h1>
           <p className="muted text-sm" style={{ margin: 0 }}>
-            Join professionals and recruiters across Healthcare, Finance, Tech, Engineering, and more.
+            One account to search open roles, connect with peers, or hire for your company.
           </p>
         </div>
 
@@ -133,46 +132,6 @@ export default function Signup() {
         </div>
 
         <form onSubmit={handleSubmit}>
-          {/* Role Switcher */}
-          <div className="field" style={{ marginBottom: 14 }}>
-            <label style={{ fontSize: 13, fontWeight: 700 }}>I am registering as</label>
-            <div className="role-toggle" style={{ marginTop: 4 }}>
-              <button
-                type="button"
-                className={`role-option ${form.role === "applicant" ? "active" : ""}`}
-                onClick={() => update("role", "applicant")}
-              >
-                Candidate / Job Seeker
-              </button>
-              <button
-                type="button"
-                className={`role-option ${form.role === "recruiter" ? "active" : ""}`}
-                onClick={() => update("role", "recruiter")}
-              >
-                Recruiter / Employer
-              </button>
-            </div>
-          </div>
-
-          {form.role === "recruiter" && (
-            <div
-              style={{
-                background: "#F0F9FF",
-                padding: "10px 14px",
-                borderRadius: 8,
-                marginBottom: 14,
-                borderLeft: "3px solid var(--brand-strong)",
-                fontSize: 12.5,
-                color: "var(--ink)",
-              }}
-            >
-              <strong>Anti-Fraud Recruiter Verification:</strong>
-              <p style={{ margin: "2px 0 0" }}>
-                Official corporate email matching your domain (e.g. <code>you@company.com</code>) will receive instant verified badges.
-              </p>
-            </div>
-          )}
-
           {/* Name Row */}
           <div className="field-row">
             <div className="field">
@@ -220,17 +179,17 @@ export default function Signup() {
 
           {/* Email */}
           <div className="field">
-            <label>{form.role === "recruiter" ? "Corporate Work Email" : "Email Address"}</label>
+            <label>Email Address</label>
             <input
               type="email"
               value={form.email}
               onChange={(e) => update("email", e.target.value)}
-              placeholder={form.role === "recruiter" ? "you@company.com" : "you@example.com"}
+              placeholder="you@example.com"
               required
             />
           </div>
 
-          {/* Industry & Headline */}
+          {/* Industry & Location */}
           <div className="field-row">
             <div className="field">
               <label>Industry</label>
@@ -260,25 +219,36 @@ export default function Signup() {
             </div>
           </div>
 
+          {/* Headline */}
           <div className="field">
             <label>Professional Headline</label>
             <input
               value={form.headline}
               onChange={(e) => update("headline", e.target.value)}
-              placeholder="e.g. Senior Registered Nurse | Cardiac ICU Specialist or Full-Stack Engineer"
+              placeholder="e.g. Software Engineer, Registered Nurse, Financial Analyst, or Founder"
             />
           </div>
 
-          {/* Recruiter specific fields */}
-          {form.role === "recruiter" && (
-            <div className="field-row">
+          {/* Optional Company Affiliation */}
+          <div style={{ margin: "10px 0 14px" }}>
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowCompanyFields(!showCompanyFields)}
+              style={{ padding: "4px 8px", fontSize: 12.5 }}
+            >
+              {showCompanyFields ? "− Hide Company / Employer Details" : "+ Hiring or representing a company? (Optional)"}
+            </button>
+          </div>
+
+          {showCompanyFields && (
+            <div className="field-row" style={{ background: "#F8FAFC", padding: 12, borderRadius: 8, border: "1px solid var(--border)", marginBottom: 14 }}>
               <div className="field">
                 <label>Company Name</label>
                 <input
                   value={form.company_name}
                   onChange={(e) => update("company_name", e.target.value)}
-                  placeholder="e.g. Mayo Clinic or Stripe"
-                  required
+                  placeholder="e.g. Acme Corp"
                 />
               </div>
               <div className="field">
@@ -286,8 +256,7 @@ export default function Signup() {
                 <input
                   value={form.company_website}
                   onChange={(e) => update("company_website", e.target.value)}
-                  placeholder="https://company.org"
-                  required
+                  placeholder="https://acme.com"
                 />
               </div>
             </div>
@@ -311,7 +280,7 @@ export default function Signup() {
             disabled={submitting}
             style={{ marginTop: 16 }}
           >
-            {submitting ? "Verifying & Creating..." : "Register & Send Email OTP"}
+            {submitting ? "Creating Account..." : "Register & Send Email OTP"}
           </button>
         </form>
 

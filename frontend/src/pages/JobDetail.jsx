@@ -55,7 +55,7 @@ export default function JobDetail() {
   if (loading) return <div className="container page"><div className="spinner" /></div>;
   if (!job) return <div className="container page"><p>Job not found.</p></div>;
 
-  const isOwner = profile?.role === "recruiter" && job.created_by === profile.user_id;
+  const isOwner = job.created_by === profile?.user_id;
 
   return (
     <div className="page container job-detail">
@@ -115,8 +115,6 @@ export default function JobDetail() {
                 Delete posting
               </button>
             </>
-          ) : profile?.role === "recruiter" ? (
-            <p className="muted text-sm">Only job seekers can apply to roles.</p>
           ) : job.has_applied ? (
             <div className="empty-state" style={{ padding: "24px 0" }}>
               <h3>Already applied</h3>

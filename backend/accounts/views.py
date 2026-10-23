@@ -223,21 +223,16 @@ class WorkExperienceDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class CandidateSearchView(generics.ListAPIView):
     """
-    Lets recruiters search candidates by skill, location, headline/name —
+    Search talent / members by skill, location, headline/name —
     works for any industry since it's just matching free-text fields.
     """
     serializer_class = UserSummarySerializer
     permission_classes = [permissions.IsAuthenticated]
-
-    def list(self, request, *args, **kwargs):
-        if request.user.role != "recruiter":
-            return Response({"detail": "Only recruiters can search candidates."}, status=status.HTTP_403_FORBIDDEN)
-        return super().list(request, *args, **kwargs)
     filter_backends = [filters.SearchFilter]
     search_fields = ["username", "first_name", "last_name"]
 
     def get_queryset(self):
-        qs = CustomUser.objects.filter(role="applicant").select_related("profile")
+        qs = CustomUser.objects.exclude(id=self.request.user.id).select_related("profile")
 
         skill = self.request.query_params.get("skill")
         location = self.request.query_params.get("location")

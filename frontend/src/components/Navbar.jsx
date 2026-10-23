@@ -27,12 +27,10 @@ export default function Navbar() {
           <nav className="nav-links">
             <Link to="/feed" className={isActive("/feed")}>Feed</Link>
             <Link to="/jobs" className={isActive("/jobs")}>Jobs</Link>
+            <Link to="/candidates" className={isActive("/candidates")}>Find Talent</Link>
             <Link to="/network" className={isActive("/network")}>Network</Link>
             <Link to="/messages" className={isActive("/messages")}>Messages</Link>
             <Link to="/resume-analysis" className={isActive("/resume-analysis")}>Resume ATS</Link>
-            {profile.role === "recruiter" && (
-              <Link to="/candidates" className={isActive("/candidates")}>Candidates</Link>
-            )}
             <Link to="/dashboard" className={isActive("/dashboard")}>Dashboard</Link>
           </nav>
         )}

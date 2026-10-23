@@ -15,13 +15,13 @@ from accounts.firebase_service import send_immediate_application_result_email
 
 class IsRecruiter(permissions.BasePermission):
     def has_permission(self, request, view):
-        return request.user.is_authenticated and request.user.role == "recruiter"
+        return request.user.is_authenticated
 
 
 class JobListCreateView(generics.ListCreateAPIView):
     """
-    GET: searchable/filterable job feed — open to applicants and recruiters.
-    POST: recruiters only, creates a job posting for ANY industry.
+    GET: searchable/filterable job feed.
+    POST: creates a job posting for ANY company/industry.
     """
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
@@ -60,8 +60,6 @@ class JobListCreateView(generics.ListCreateAPIView):
         return JobWriteSerializer if self.request.method == "POST" else JobSerializer
 
     def perform_create(self, serializer):
-        if self.request.user.role != "recruiter":
-            raise PermissionDenied("Only recruiters can post jobs.")
         serializer.save()
 
     def get_serializer_context(self):
@@ -86,7 +84,7 @@ class JobDetailView(generics.RetrieveUpdateDestroyAPIView):
 
 class ApplyToJobView(APIView):
     """
-    Candidate applies with a resume file.
+    User applies with a resume file.
     Validates file format (strictly PDF or Word .docx/.doc only).
     Runs automated ATS evaluation, checks phishing URLs and unstructured format,
     calculates score, sends immediate result email to candidate, and triggers
@@ -95,13 +93,13 @@ class ApplyToJobView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, job_id):
-        if request.user.role != "applicant":
-            raise PermissionDenied("Only applicants can apply to jobs.")
-
         try:
             job = Job.objects.get(id=job_id, is_active=True)
         except Job.DoesNotExist:
             return Response({"detail": "Job not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        if job.created_by_id == request.user.id:
+            return Response({"detail": "You cannot apply to a job that you posted."}, status=status.HTTP_400_BAD_REQUEST)
 
         if Application.objects.filter(job=job, applicant=request.user).exists():
             return Response({"detail": "You have already applied to this job."}, status=status.HTTP_400_BAD_REQUEST)
@@ -211,7 +209,8 @@ class RecruiterApplicationDecisionView(APIView):
 
 
 class RecruiterDashboardView(APIView):
-    permission_classes = [permissions.IsAuthenticated, IsRecruiter]
+    """Returns all jobs posted by the current user."""
+    permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         jobs = Job.objects.filter(created_by=request.user)

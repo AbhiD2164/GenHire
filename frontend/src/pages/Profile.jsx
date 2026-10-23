@@ -125,15 +125,15 @@ export default function Profile() {
             </div>
             <p className="muted" style={{ margin: "4px 0 8px" }}>{profile.headline || "Add a headline to stand out"}</p>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-              <span className="tag">{profile.role === "recruiter" ? "Recruiter" : "Job seeker"}</span>
-              {profile.role === "recruiter" && (
+              <span className="tag">Active Member</span>
+              {profile.company_name && (
                 profile.is_recruiter_verified ? (
                   <span className="tag" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#10b981" }}>
-                    ✓ Corporate Domain Verified
+                    ✓ Corporate Verified ({profile.company_name})
                   </span>
                 ) : (
                   <span className="tag" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
-                    ⚠ Domain Verification Pending
+                    {profile.company_name}
                   </span>
                 )
               )}
@@ -191,26 +191,24 @@ export default function Profile() {
             />
           </div>
 
-          {profile.role === "recruiter" && (
-            <div className="field-row">
-              <div className="field">
-                <label>Company Name</label>
-                <input
-                  value={form.company_name}
-                  onChange={(e) => update("company_name", e.target.value)}
-                  placeholder="e.g. Acme Corporation"
-                />
-              </div>
-              <div className="field">
-                <label>Company Website</label>
-                <input
-                  value={form.company_website}
-                  onChange={(e) => update("company_website", e.target.value)}
-                  placeholder="https://acme.com"
-                />
-              </div>
+          <div className="field-row">
+            <div className="field">
+              <label>Company / Organization (Optional)</label>
+              <input
+                value={form.company_name}
+                onChange={(e) => update("company_name", e.target.value)}
+                placeholder="e.g. Acme Corporation"
+              />
             </div>
-          )}
+            <div className="field">
+              <label>Company Website (Optional)</label>
+              <input
+                value={form.company_website}
+                onChange={(e) => update("company_website", e.target.value)}
+                placeholder="https://acme.com"
+              />
+            </div>
+          </div>
 
           <div className="field">
             <label>About / Bio</label>

@@ -354,7 +354,7 @@ export default function Network() {
                         {displayName}
                       </h4>
                       <p className="person-card-headline" title={person.headline}>
-                        {person.headline || `${person.role === "recruiter" ? "Recruiter" : "Professional"}`}
+                        {person.headline || "GenHire Professional"}
                       </p>
                       <div className="person-card-meta">
                         {person.industry || person.location || "GenHire Network"}

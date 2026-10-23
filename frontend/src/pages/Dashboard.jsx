@@ -8,7 +8,7 @@ export default function Dashboard() {
   const { profile } = useAuth();
   const [activeTab, setActiveTab] = useState("all");
   const [applications, setApplications] = useState([]);
-  const [recruiterJobs, setRecruiterJobs] = useState([]);
+  const [postedJobs, setPostedJobs] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [connectionCount, setConnectionCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -16,23 +16,20 @@ export default function Dashboard() {
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [appsData, suggData, connData] = await Promise.all([
+      const [appsData, postedData, suggData, connData] = await Promise.all([
         myApplications().catch(() => ({ results: [] })),
+        recruiterDashboard().catch(() => []),
         getRuntimeSuggestions().catch(() => ({ suggestions: [] })),
         myConnections().catch(() => ({ connections: [] })),
       ]);
       setApplications(appsData.results || appsData || []);
+      setPostedJobs(postedData || []);
       setSuggestions(suggData.suggestions || []);
       setConnectionCount(connData.connections?.length || 0);
-
-      if (profile?.role === "recruiter") {
-        const jobs = await recruiterDashboard().catch(() => []);
-        setRecruiterJobs(jobs || []);
-      }
     } finally {
       setLoading(false);
     }
-  }, [profile?.role]);
+  }, []);
 
   useEffect(() => {
     fetchDashboardData();
@@ -66,7 +63,7 @@ export default function Dashboard() {
 
   return (
     <div className="container page" style={{ paddingTop: 16 }}>
-      {/* LinkedIn-style Profile Hero Banner */}
+      {/* Unified Profile Hero Banner */}
       <section className="dashboard-hero">
         <div className="dashboard-hero-cover" />
         <div className="dashboard-hero-content">
@@ -89,25 +86,23 @@ export default function Dashboard() {
                 </h1>
                 <span className="text-sm muted">@{profile.username}</span>
 
-                {profile.role === "recruiter" ? (
-                  profile.is_recruiter_verified ? (
-                    <span className="badge" style={{ background: "#DCFCE7", color: "#166534" }}>
-                      ✓ Verified Recruiter ({profile.company_name || "Official"})
-                    </span>
-                  ) : (
-                    <span className="badge" style={{ background: "#FEF3C7", color: "#92400E" }}>
-                      ⚠ Recruiter Pending Domain Check
-                    </span>
-                  )
+                {profile.is_recruiter_verified ? (
+                  <span className="badge" style={{ background: "#DCFCE7", color: "#166534" }}>
+                    ✓ Verified Employer ({profile.company_name})
+                  </span>
+                ) : profile.company_name ? (
+                  <span className="badge" style={{ background: "#FEF3C7", color: "#92400E" }}>
+                    {profile.company_name}
+                  </span>
                 ) : (
                   <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1" }}>
-                    ✓ Candidate Active
+                    ✓ Member Active
                   </span>
                 )}
               </div>
 
               <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--slate)" }}>
-                {profile.headline || (profile.role === "recruiter" ? "Talent Acquisition Partner" : "Open for Opportunities")}
+                {profile.headline || "GenHire Professional Member"}
               </p>
               <div className="text-xs muted" style={{ marginTop: 2 }}>
                 {profile.industry ? `${profile.industry} • ` : ""}
@@ -125,11 +120,12 @@ export default function Dashboard() {
             <Link to="/resume-analysis" className="btn btn-outline btn-sm">
               Scan Resume ATS
             </Link>
-            {profile.role === "recruiter" && (
-              <Link to="/jobs/new" className="btn btn-primary btn-sm">
-                + Post New Role
-              </Link>
-            )}
+            <Link to="/jobs" className="btn btn-outline btn-sm">
+              Browse Open Roles
+            </Link>
+            <Link to="/jobs/new" className="btn btn-primary btn-sm">
+              + Post a Job
+            </Link>
           </div>
         </div>
       </section>
@@ -153,41 +149,41 @@ export default function Dashboard() {
           </span>
         </div>
         <div className="stat-metric-card">
+          <span className="text-xs muted font-semibold">JOBS POSTED BY YOU</span>
+          <div className="stat-metric-num" style={{ color: "var(--brand-strong)" }}>
+            {postedJobs.length}
+          </div>
+          <Link to="/jobs/new" className="text-xs" style={{ color: "var(--brand-strong)", marginTop: 2, display: "block" }}>
+            + Post another job →
+          </Link>
+        </div>
+        <div className="stat-metric-card">
           <span className="text-xs muted font-semibold">NETWORK CONNECTIONS</span>
           <div className="stat-metric-num">{connectionCount}</div>
           <Link to="/network" className="text-xs" style={{ color: "var(--brand-strong)", marginTop: 2, display: "block" }}>
             Grow your network →
           </Link>
         </div>
-        <div className="stat-metric-card">
-          <span className="text-xs muted font-semibold">PROFILE COMPLETION</span>
-          <div className="stat-metric-num" style={{ color: "var(--brand-strong)" }}>
-            {completeness}%
-          </div>
-          <div className="score-progress-bar">
-            <div
-              className="score-progress-fill"
-              style={{ width: `${completeness}%`, background: "var(--brand-strong)" }}
-            />
-          </div>
-        </div>
       </section>
 
       {/* Main 2-Column Dashboard Layout */}
       <div className="dashboard-main-grid">
-        {/* Left Column: Applications & Recruiter Listings */}
+        {/* Left Column: Hiring Pipeline & Application Status */}
         <main style={{ minWidth: 0 }}>
-          {/* Recruiter Active Roles if role is recruiter */}
-          {profile.role === "recruiter" && recruiterJobs.length > 0 && (
+          {/* Hiring & Posted Roles Section */}
+          {postedJobs.length > 0 ? (
             <div className="card" style={{ marginBottom: 24 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-                <h3 style={{ margin: 0, fontSize: 16 }}>Your Posted Roles ({recruiterJobs.length})</h3>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Your Posted Jobs & Hiring Pipeline ({postedJobs.length})</h3>
+                  <p className="text-sm muted" style={{ margin: "2px 0 0" }}>Manage applicants and review automated ATS screening scores</p>
+                </div>
                 <Link to="/jobs/new" className="btn btn-outline btn-sm">
                   + Add Role
                 </Link>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {recruiterJobs.map((job) => (
+                {postedJobs.map((job) => (
                   <div
                     key={job.id}
                     style={{
@@ -203,7 +199,7 @@ export default function Dashboard() {
                     <div>
                       <strong style={{ fontSize: 14.5 }}>{job.title}</strong>
                       <p className="text-xs muted" style={{ margin: "2px 0 0" }}>
-                        {job.location} • {job.work_mode} • {job.is_active ? "Active" : "Closed"}
+                        {job.company_name} • {job.location} • {job.work_mode} • {job.is_active ? "Active" : "Closed"}
                       </p>
                     </div>
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -218,6 +214,28 @@ export default function Dashboard() {
                 ))}
               </div>
             </div>
+          ) : (
+            <div
+              className="card"
+              style={{
+                marginBottom: 24,
+                padding: "16px 20px",
+                background: "linear-gradient(135deg, #F0F9FF 0%, #FFFFFF 100%)",
+                border: "1px solid #BAE6FD",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#0369A1" }}>Hiring for your company or team?</h3>
+                  <p className="text-xs muted" style={{ margin: 0 }}>
+                    Post an open job role anytime to automatically screen resumes, receive instant ATS-scored candidates, and find qualified talent.
+                  </p>
+                </div>
+                <Link to="/jobs/new" className="btn btn-primary btn-sm">
+                  + Post a Job
+                </Link>
+              </div>
+            </div>
           )}
 
           {/* Applied Jobs Center */}
@@ -226,7 +244,7 @@ export default function Dashboard() {
               <div>
                 <h3 style={{ margin: 0, fontSize: 16 }}>Application Status Center</h3>
                 <p className="text-sm muted" style={{ margin: "2px 0 0" }}>
-                  Instant ATS screening results, status breakdown, and automated candidate communications
+                  Instant ATS screening results, status breakdown, and candidate communication history
                 </p>
               </div>
 
@@ -343,7 +361,7 @@ export default function Dashboard() {
                             <strong>
                               {app.rejection_stage === "rejected_by_system"
                                 ? "⚠ Application rejected by system: "
-                                : "Application rejected by recruiter: "}
+                                : "Application rejected by hiring team: "}
                             </strong>
                             <span>{app.rejection_reason || app.feedback || "Did not satisfy matching criteria or format standard."}</span>
                           </div>
@@ -362,7 +380,7 @@ export default function Dashboard() {
                           >
                             <strong>In Review: </strong>
                             <span>
-                              {app.candidate_message || "Partial match (60-70%). Resume forwarded for recruiter consideration."}
+                              {app.candidate_message || "Partial match (60-70%). Resume forwarded for review."}
                             </span>
                           </div>
                         )}
@@ -428,11 +446,17 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Profile Tip Card */}
+          {/* Profile Health & Completeness */}
           <div className="card" style={{ background: "linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%)" }}>
-            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Career Profile Health</h4>
+            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Profile Completeness ({completeness}%)</h4>
+            <div className="score-progress-bar" style={{ marginBottom: 10 }}>
+              <div
+                className="score-progress-fill"
+                style={{ width: `${completeness}%`, background: "var(--brand-strong)" }}
+              />
+            </div>
             <p className="text-xs muted" style={{ margin: "0 0 10px" }}>
-              Profiles with verified mobile numbers and multi-industry headline keywords receive 3x more recruiter inquiries.
+              Complete profiles with a verified phone number and skills increase connection acceptance and recruiter response by 3x.
             </p>
             <Link to="/profile/edit" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center" }}>
               Update Profile Details →

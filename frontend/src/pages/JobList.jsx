@@ -58,9 +58,7 @@ export default function JobList() {
           <h1>Find your next role</h1>
           <p className="muted">Across every industry — not just tech.</p>
         </div>
-        {profile?.role === "recruiter" && (
-          <Link to="/jobs/new" className="btn btn-amber">Post a job</Link>
-        )}
+        <Link to="/jobs/new" className="btn btn-primary">+ Post a Job</Link>
       </div>
 
       <div className="filter-bar card">
