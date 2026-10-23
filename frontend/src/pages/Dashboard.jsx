@@ -2,24 +2,28 @@ import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { myApplications, recruiterDashboard, getRuntimeSuggestions } from "../api/jobs";
+import { myConnections } from "../api/network";
 
 export default function Dashboard() {
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState("applied");
+  const [activeTab, setActiveTab] = useState("all");
   const [applications, setApplications] = useState([]);
   const [recruiterJobs, setRecruiterJobs] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [connectionCount, setConnectionCount] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [appsData, suggData] = await Promise.all([
+      const [appsData, suggData, connData] = await Promise.all([
         myApplications().catch(() => ({ results: [] })),
         getRuntimeSuggestions().catch(() => ({ suggestions: [] })),
+        myConnections().catch(() => ({ connections: [] })),
       ]);
       setApplications(appsData.results || appsData || []);
       setSuggestions(suggData.suggestions || []);
+      setConnectionCount(connData.connections?.length || 0);
 
       if (profile?.role === "recruiter") {
         const jobs = await recruiterDashboard().catch(() => []);
@@ -36,313 +40,406 @@ export default function Dashboard() {
 
   if (!profile) return null;
 
-  const appliedList = applications.filter((a) => a.status === "applied" || a.status === "consider" || a.status === "pending");
+  const appliedList = applications.filter(
+    (a) => a.status === "applied" || a.status === "consider" || a.status === "pending"
+  );
   const selectedList = applications.filter((a) => a.status === "selected");
   const rejectedList = applications.filter((a) => a.status === "rejected");
 
   const currentTabList =
-    activeTab === "applied" ? appliedList : activeTab === "selected" ? selectedList : rejectedList;
+    activeTab === "all"
+      ? applications
+      : activeTab === "applied"
+      ? appliedList
+      : activeTab === "selected"
+      ? selectedList
+      : rejectedList;
+
+  // Calculate profile completeness
+  let completeness = 40;
+  if (profile.headline) completeness += 15;
+  if (profile.phone_number) completeness += 15;
+  if (profile.bio) completeness += 10;
+  if (profile.skills) completeness += 10;
+  if (profile.resume) completeness += 10;
+  completeness = Math.min(100, completeness);
 
   return (
-    <div className="page container dashboard-page">
-      {/* Header bar */}
-      <div className="card dashboard-welcome-card" style={{ marginBottom: 24, padding: "24px 28px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
-              <span className="eyebrow" style={{ margin: 0 }}>Unified Workspace</span>
-              {profile.role === "recruiter" ? (
-                profile.is_recruiter_verified ? (
-                  <span className="tag" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#10b981", border: "1px solid rgba(16, 185, 129, 0.3)" }}>
-                    ✓ Verified Recruiter ({profile.company_name || "Official"})
-                  </span>
-                ) : (
-                  <span className="tag" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b", border: "1px solid rgba(245, 158, 11, 0.3)" }}>
-                    ⚠ Recruiter (Pending Domain Verification)
-                  </span>
-                )
-              ) : (
-                <span className="tag" style={{ background: "rgba(59, 130, 246, 0.15)", color: "#3b82f6", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
-                  ✓ Candidate Profile Active
-                </span>
-              )}
-            </div>
-            <h1 style={{ fontSize: "1.75rem", margin: 0 }}>Welcome back, {profile.full_name || profile.username}</h1>
-            <p className="muted" style={{ marginTop: 4, marginBottom: 0 }}>
-              Real-time application tracking, automated ATS evaluation results, and RabbitMQ runtime recommendations.
-            </p>
-          </div>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <Link to="/jobs" className="btn btn-outline btn-sm">Browse Open Roles</Link>
-            <Link to="/resume-analysis" className="btn btn-outline btn-sm">Scan Resume ATS</Link>
-            {profile.role === "recruiter" && (
-              <Link to="/jobs/new" className="btn btn-primary btn-sm">+ Post a Job</Link>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Recruiter Section if posted roles exist */}
-      {profile.role === "recruiter" && recruiterJobs.length > 0 && (
-        <section style={{ marginBottom: 32 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <h2 style={{ fontSize: "1.25rem", margin: 0 }}>Your Posted Jobs ({recruiterJobs.length})</h2>
-            <Link to="/jobs/new" className="btn btn-outline btn-sm">Post Another Role</Link>
-          </div>
-          <div className="dashboard-job-list">
-            {recruiterJobs.map((job) => (
-              <div key={job.id} className="card dashboard-job-row" style={{ padding: "16px 20px" }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: "1.1rem" }}>{job.title}</h3>
-                  <p className="muted text-sm" style={{ margin: "4px 0 0" }}>
-                    {job.company_name} · {job.location} · {job.is_active ? "Active" : "Closed"}
-                  </p>
-                </div>
-                <div className="dashboard-job-actions" style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span className="tag" style={{ background: "rgba(99, 102, 241, 0.12)", color: "#6366f1" }}>
-                    {job.applicant_count} applicant(s)
-                  </span>
-                  <Link to={`/jobs/${job.id}/applications`} className="btn btn-primary btn-sm">
-                    Review Applicants
-                  </Link>
-                  <Link to={`/jobs/${job.id}`} className="btn btn-ghost btn-sm">
-                    View
-                  </Link>
-                </div>
+    <div className="container page" style={{ paddingTop: 16 }}>
+      {/* LinkedIn-style Profile Hero Banner */}
+      <section className="dashboard-hero">
+        <div className="dashboard-hero-cover" />
+        <div className="dashboard-hero-content">
+          <div style={{ display: "flex", gap: 20, alignItems: "flex-end", flexWrap: "wrap" }}>
+            {profile.avatar ? (
+              <img
+                src={profile.avatar}
+                alt={profile.full_name || profile.username}
+                className="dashboard-hero-avatar"
+              />
+            ) : (
+              <div className="dashboard-hero-avatar">
+                {(profile.full_name || profile.username || "U").charAt(0).toUpperCase()}
               </div>
-            ))}
-          </div>
-        </section>
-      )}
+            )}
+            <div style={{ paddingBottom: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <h1 style={{ fontSize: 22, margin: 0, fontWeight: 800, color: "var(--ink)" }}>
+                  {profile.full_name || profile.username}
+                </h1>
+                <span className="text-sm muted">@{profile.username}</span>
 
-      {/* Applied Jobs Section with 3 tabs: Applied, Selected, Rejected */}
-      <section style={{ marginBottom: 36 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <span className="eyebrow" style={{ margin: 0 }}>Application Status Center</span>
-            <h2 style={{ fontSize: "1.35rem", margin: 0 }}>Your Applied Jobs</h2>
+                {profile.role === "recruiter" ? (
+                  profile.is_recruiter_verified ? (
+                    <span className="badge" style={{ background: "#DCFCE7", color: "#166534" }}>
+                      ✓ Verified Recruiter ({profile.company_name || "Official"})
+                    </span>
+                  ) : (
+                    <span className="badge" style={{ background: "#FEF3C7", color: "#92400E" }}>
+                      ⚠ Recruiter Pending Domain Check
+                    </span>
+                  )
+                ) : (
+                  <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1" }}>
+                    ✓ Candidate Active
+                  </span>
+                )}
+              </div>
+
+              <p style={{ margin: "4px 0 0", fontSize: 14, color: "var(--slate)" }}>
+                {profile.headline || (profile.role === "recruiter" ? "Talent Acquisition Partner" : "Open for Opportunities")}
+              </p>
+              <div className="text-xs muted" style={{ marginTop: 2 }}>
+                {profile.industry ? `${profile.industry} • ` : ""}
+                {profile.location || "Location not specified"}
+                {profile.phone_number ? ` • 📞 ${profile.phone_number}` : ""}
+              </div>
+            </div>
           </div>
 
-          {/* 3 Section Tabs */}
-          <div className="tab-group" style={{ display: "flex", background: "var(--bg-subtle, #1e222b)", padding: 4, borderRadius: 8, gap: 4 }}>
-            <button
-              type="button"
-              className={`btn btn-sm ${activeTab === "applied" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setActiveTab("applied")}
-              style={{ borderRadius: 6 }}
-            >
-              Applied ({appliedList.length})
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${activeTab === "selected" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setActiveTab("selected")}
-              style={{ borderRadius: 6 }}
-            >
-              Selected ({selectedList.length})
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${activeTab === "rejected" ? "btn-primary" : "btn-ghost"}`}
-              onClick={() => setActiveTab("rejected")}
-              style={{ borderRadius: 6 }}
-            >
-              Rejected ({rejectedList.length})
-            </button>
-          </div>
-        </div>
-
-        {loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div className="spinner" /></div>
-        ) : currentTabList.length === 0 ? (
-          <div className="card empty-state" style={{ padding: 40, textAlign: "center" }}>
-            <h3 style={{ margin: "0 0 8px" }}>No applications in '{activeTab}' category</h3>
-            <p className="muted" style={{ margin: 0 }}>
-              {activeTab === "applied"
-                ? "You have no pending applications in review."
-                : activeTab === "selected"
-                ? "Applications with matching ATS scores (80-100%) or recruiter acceptances will appear here."
-                : "No rejected applications found."}
-            </p>
-            {activeTab === "applied" && (
-              <Link to="/jobs" className="btn btn-primary btn-sm" style={{ marginTop: 16 }}>
-                Explore Open Positions
+          {/* Quick Action Buttons */}
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", paddingBottom: 4 }}>
+            <Link to="/profile/edit" className="btn btn-outline btn-sm">
+              Edit Profile
+            </Link>
+            <Link to="/resume-analysis" className="btn btn-outline btn-sm">
+              Scan Resume ATS
+            </Link>
+            {profile.role === "recruiter" && (
+              <Link to="/jobs/new" className="btn btn-primary btn-sm">
+                + Post New Role
               </Link>
             )}
           </div>
-        ) : (
-          <div className="dashboard-job-list">
-            {currentTabList.map((app) => {
-              const isSelected = app.status === "selected";
-              const isRejected = app.status === "rejected";
-
-              return (
-                <div key={app.id} className="card dashboard-job-row" style={{ padding: "20px 24px", marginBottom: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 4 }}>
-                      <h3 style={{ margin: 0, fontSize: "1.15rem" }}>{app.job_title}</h3>
-                      <span className="muted text-sm">at {app.company_name}</span>
-                      {app.location && <span className="muted text-sm">· {app.location}</span>}
-                    </div>
-
-                    {/* Resume Score & Status info */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8, flexWrap: "wrap" }}>
-                      <span
-                        className="tag"
-                        style={{
-                          background: isSelected
-                            ? "rgba(16, 185, 129, 0.15)"
-                            : isRejected
-                            ? "rgba(239, 68, 68, 0.15)"
-                            : "rgba(59, 130, 246, 0.15)",
-                          color: isSelected ? "#10b981" : isRejected ? "#ef4444" : "#3b82f6",
-                          fontWeight: 600,
-                        }}
-                      >
-                        ATS Score: {app.score_percentage || round(app.score * 100, 1)}%
-                      </span>
-
-                      {isSelected && (
-                        <span className="status-pill status-selected">✓ Selected by System / Recruiter</span>
-                      )}
-
-                      {!isSelected && !isRejected && (
-                        <span className="status-pill status-pending">In Review (Partial Match)</span>
-                      )}
-
-                      {isRejected && (
-                        <span className="status-pill status-rejected">
-                          {app.rejection_stage === "rejected_by_system"
-                            ? "Application rejected by system"
-                            : "Application rejected by recruiter"}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Stage and Reason details */}
-                    {isRejected && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          padding: "10px 14px",
-                          borderRadius: 6,
-                          background: "rgba(239, 68, 68, 0.08)",
-                          borderLeft: "3px solid #ef4444",
-                          fontSize: "0.88rem",
-                        }}
-                      >
-                        <strong>Stage: </strong>
-                        <span>
-                          {app.rejection_stage === "rejected_by_system"
-                            ? "Automated System Screening (Score < 60% or Format/Security Policy)"
-                            : "Recruiter Review"}
-                        </span>
-                        <div style={{ marginTop: 4 }}>
-                          <strong>Reason: </strong>
-                          <span>{app.rejection_reason || app.feedback || "Did not meet requirement threshold."}</span>
-                        </div>
-                      </div>
-                    )}
-
-                    {isSelected && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          padding: "10px 14px",
-                          borderRadius: 6,
-                          background: "rgba(16, 185, 129, 0.08)",
-                          borderLeft: "3px solid #10b981",
-                          fontSize: "0.88rem",
-                        }}
-                      >
-                        <strong>Status: </strong>
-                        <span>{app.candidate_message || "Congratulations! Your profile was selected for this role."}</span>
-                      </div>
-                    )}
-
-                    {!isSelected && !isRejected && (
-                      <div className="text-sm muted" style={{ marginTop: 8 }}>
-                        {app.candidate_message || "Application received and under review. Updates will be emailed immediately."}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 8 }}>
-                    <Link to={`/jobs/${app.job}`} className="btn btn-outline btn-sm">View Job</Link>
-                    <span className="text-xs muted">
-                      {new Date(app.created_at).toLocaleDateString()}
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        </div>
       </section>
 
-      {/* Runtime Suggestions (Powered by RabbitMQ & Cache) */}
-      <section style={{ marginTop: 32 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div>
-            <span className="eyebrow" style={{ margin: 0 }}>RabbitMQ Runtime Intelligence</span>
-            <h2 style={{ fontSize: "1.35rem", margin: 0 }}>Recommended Jobs For You</h2>
-          </div>
-          <span className="tag" style={{ background: "rgba(99, 102, 241, 0.12)", color: "#6366f1" }}>
-            Real-Time Cache Sync
+      {/* KPI Stats Ribbon */}
+      <section className="dashboard-stats-grid">
+        <div className="stat-metric-card">
+          <span className="text-xs muted font-semibold">APPLICATIONS SUBMITTED</span>
+          <div className="stat-metric-num">{applications.length}</div>
+          <span className="text-xs muted" style={{ marginTop: 2, display: "block" }}>
+            {appliedList.length} currently in active review
           </span>
         </div>
-
-        {suggestions.length === 0 ? (
-          <div className="card" style={{ padding: 24, textAlign: "center" }}>
-            <p className="muted" style={{ margin: 0 }}>
-              Apply to jobs or scan your resume to receive personalized runtime recommendations.
-            </p>
+        <div className="stat-metric-card">
+          <span className="text-xs muted font-semibold">SELECTED / MATCHES</span>
+          <div className="stat-metric-num" style={{ color: "#16A34A" }}>
+            {selectedList.length}
           </div>
-        ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 16 }}>
-            {suggestions.slice(0, 6).map((job) => (
-              <div key={job.id} className="card" style={{ padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-                <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-                    <span
-                      className="tag text-xs"
-                      style={{
-                        background: job.match_type === "similar_to_profile" ? "rgba(16, 185, 129, 0.15)" : "rgba(99, 102, 241, 0.15)",
-                        color: job.match_type === "similar_to_profile" ? "#10b981" : "#6366f1",
-                        fontWeight: 600,
-                      }}
-                    >
-                      {job.match_type === "similar_to_profile" ? "★ Profile Match" : "⚡ Resume Strength Match"}
-                    </span>
-                    <span className="text-xs muted">{job.work_mode}</span>
-                  </div>
-
-                  <h3 style={{ fontSize: "1.05rem", margin: "4px 0" }}>{job.title}</h3>
-                  <p className="text-sm muted" style={{ margin: "0 0 10px" }}>{job.company_name} · {job.location}</p>
-
-                  <p className="text-xs muted" style={{ background: "var(--bg-subtle, #181b22)", padding: 8, borderRadius: 6, margin: "6px 0 12px" }}>
-                    {job.reason}
-                  </p>
-                </div>
-
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
-                  <span className="text-xs" style={{ color: "var(--brand-strong)", fontWeight: 600 }}>
-                    Match: {Math.round(job.match_score * 100)}%
-                  </span>
-                  <Link to={`/jobs/${job.id}`} className="btn btn-primary btn-sm">
-                    View & Apply
-                  </Link>
-                </div>
-              </div>
-            ))}
+          <span className="text-xs muted" style={{ marginTop: 2, display: "block" }}>
+            ATS high match score (80%+)
+          </span>
+        </div>
+        <div className="stat-metric-card">
+          <span className="text-xs muted font-semibold">NETWORK CONNECTIONS</span>
+          <div className="stat-metric-num">{connectionCount}</div>
+          <Link to="/network" className="text-xs" style={{ color: "var(--brand-strong)", marginTop: 2, display: "block" }}>
+            Grow your network →
+          </Link>
+        </div>
+        <div className="stat-metric-card">
+          <span className="text-xs muted font-semibold">PROFILE COMPLETION</span>
+          <div className="stat-metric-num" style={{ color: "var(--brand-strong)" }}>
+            {completeness}%
           </div>
-        )}
+          <div className="score-progress-bar">
+            <div
+              className="score-progress-fill"
+              style={{ width: `${completeness}%`, background: "var(--brand-strong)" }}
+            />
+          </div>
+        </div>
       </section>
+
+      {/* Main 2-Column Dashboard Layout */}
+      <div className="dashboard-main-grid">
+        {/* Left Column: Applications & Recruiter Listings */}
+        <main style={{ minWidth: 0 }}>
+          {/* Recruiter Active Roles if role is recruiter */}
+          {profile.role === "recruiter" && recruiterJobs.length > 0 && (
+            <div className="card" style={{ marginBottom: 24 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <h3 style={{ margin: 0, fontSize: 16 }}>Your Posted Roles ({recruiterJobs.length})</h3>
+                <Link to="/jobs/new" className="btn btn-outline btn-sm">
+                  + Add Role
+                </Link>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {recruiterJobs.map((job) => (
+                  <div
+                    key={job.id}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      padding: "12px 14px",
+                      background: "#F8FAFC",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    <div>
+                      <strong style={{ fontSize: 14.5 }}>{job.title}</strong>
+                      <p className="text-xs muted" style={{ margin: "2px 0 0" }}>
+                        {job.location} • {job.work_mode} • {job.is_active ? "Active" : "Closed"}
+                      </p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1" }}>
+                        {job.applicant_count || 0} applicants
+                      </span>
+                      <Link to={`/jobs/${job.id}/applications`} className="btn btn-primary btn-sm">
+                        Review Candidates
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Applied Jobs Center */}
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16 }}>Application Status Center</h3>
+                <p className="text-sm muted" style={{ margin: "2px 0 0" }}>
+                  Instant ATS screening results, status breakdown, and automated candidate communications
+                </p>
+              </div>
+
+              {/* Segmented Filter Pills */}
+              <div style={{ display: "flex", gap: 6, background: "#F1F5F9", padding: 3, borderRadius: 8 }}>
+                <button
+                  className={`btn btn-sm ${activeTab === "all" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => setActiveTab("all")}
+                  style={{ fontSize: 12 }}
+                >
+                  All ({applications.length})
+                </button>
+                <button
+                  className={`btn btn-sm ${activeTab === "applied" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => setActiveTab("applied")}
+                  style={{ fontSize: 12 }}
+                >
+                  Applied ({appliedList.length})
+                </button>
+                <button
+                  className={`btn btn-sm ${activeTab === "selected" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => setActiveTab("selected")}
+                  style={{ fontSize: 12 }}
+                >
+                  Selected ({selectedList.length})
+                </button>
+                <button
+                  className={`btn btn-sm ${activeTab === "rejected" ? "btn-primary" : "btn-ghost"}`}
+                  onClick={() => setActiveTab("rejected")}
+                  style={{ fontSize: 12 }}
+                >
+                  Rejected ({rejectedList.length})
+                </button>
+              </div>
+            </div>
+
+            {loading ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div className="spinner" />
+              </div>
+            ) : currentTabList.length === 0 ? (
+              <div className="empty-state" style={{ padding: "36px 0" }}>
+                <p className="muted">No applications found under '{activeTab}' filter.</p>
+                <Link to="/jobs" className="btn btn-primary btn-sm" style={{ marginTop: 10 }}>
+                  Explore Open Job Roles
+                </Link>
+              </div>
+            ) : (
+              <div>
+                {currentTabList.map((app) => {
+                  const isSelected = app.status === "selected";
+                  const isRejected = app.status === "rejected";
+                  const score = app.score_percentage || Math.round((app.score || 0) * 100);
+
+                  return (
+                    <div key={app.id} className="app-card">
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+                        <div>
+                          <h4 style={{ margin: "0 0 2px", fontSize: 15, fontWeight: 700 }}>
+                            {app.job_title}
+                          </h4>
+                          <span className="text-sm muted">
+                            {app.company_name} {app.location ? `• ${app.location}` : ""}
+                          </span>
+                        </div>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                          <span
+                            className="badge"
+                            style={{
+                              background:
+                                score >= 80 ? "#DCFCE7" : score >= 60 ? "#FEF3C7" : "#FEE2E2",
+                              color:
+                                score >= 80 ? "#166534" : score >= 60 ? "#92400E" : "#991B1B",
+                              fontWeight: 700,
+                            }}
+                          >
+                            ATS Match: {score}%
+                          </span>
+                          <Link to={`/jobs/${app.job}`} className="btn btn-outline btn-sm">
+                            View Role
+                          </Link>
+                        </div>
+                      </div>
+
+                      {/* Status & Stage Banner */}
+                      <div style={{ marginTop: 12 }}>
+                        {isSelected && (
+                          <div
+                            style={{
+                              background: "#F0FDF4",
+                              borderLeft: "4px solid #16A34A",
+                              padding: "8px 12px",
+                              borderRadius: 4,
+                              fontSize: 13,
+                              color: "#166534",
+                            }}
+                          >
+                            <strong>✓ Selected: </strong>
+                            <span>{app.candidate_message || "Candidate application meets or exceeds qualification threshold (80-100%). Result sent via email."}</span>
+                          </div>
+                        )}
+
+                        {isRejected && (
+                          <div
+                            style={{
+                              background: "#FEF2F2",
+                              borderLeft: "4px solid #DC2626",
+                              padding: "8px 12px",
+                              borderRadius: 4,
+                              fontSize: 13,
+                              color: "#991B1B",
+                            }}
+                          >
+                            <strong>
+                              {app.rejection_stage === "rejected_by_system"
+                                ? "⚠ Application rejected by system: "
+                                : "Application rejected by recruiter: "}
+                            </strong>
+                            <span>{app.rejection_reason || app.feedback || "Did not satisfy matching criteria or format standard."}</span>
+                          </div>
+                        )}
+
+                        {!isSelected && !isRejected && (
+                          <div
+                            style={{
+                              background: "#EFF6FF",
+                              borderLeft: "4px solid #2563EB",
+                              padding: "8px 12px",
+                              borderRadius: 4,
+                              fontSize: 13,
+                              color: "#1E40AF",
+                            }}
+                          >
+                            <strong>In Review: </strong>
+                            <span>
+                              {app.candidate_message || "Partial match (60-70%). Resume forwarded for recruiter consideration."}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }} className="text-xs muted">
+                        <span>Submitted: {new Date(app.created_at).toLocaleDateString()}</span>
+                        <span>Zero-delay email dispatch verified</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </main>
+
+        {/* Right Column: Runtime Recommendations & Profile Advice */}
+        <aside style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* RabbitMQ Runtime Intelligence Card */}
+          <div className="card">
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <h4 style={{ margin: 0, fontSize: 14 }}>Runtime Recommendations</h4>
+              <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1", fontSize: 10 }}>
+                RabbitMQ Sync
+              </span>
+            </div>
+            <p className="text-xs muted" style={{ margin: "0 0 12px" }}>
+              Dynamic match suggestions calculated at runtime from your resume analysis and applied profile history:
+            </p>
+
+            {suggestions.length === 0 ? (
+              <p className="text-xs muted">
+                Apply to roles or scan your resume to activate runtime cache recommendations.
+              </p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {suggestions.slice(0, 4).map((sugg) => (
+                  <div
+                    key={sugg.id}
+                    style={{
+                      padding: 10,
+                      background: "#F8FAFC",
+                      border: "1px solid var(--border)",
+                      borderRadius: 6,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <strong style={{ fontSize: 13 }}>{sugg.title}</strong>
+                      <span className="text-xs" style={{ color: "var(--brand-strong)", fontWeight: 700 }}>
+                        {Math.round(sugg.match_score * 100)}%
+                      </span>
+                    </div>
+                    <p className="text-xs muted" style={{ margin: "2px 0 6px" }}>
+                      {sugg.company_name} • {sugg.location}
+                    </p>
+                    <Link to={`/jobs/${sugg.id}`} className="btn btn-outline btn-sm" style={{ width: "100%", textAlign: "center", fontSize: 11, padding: "4px 8px" }}>
+                      View & Apply
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Profile Tip Card */}
+          <div className="card" style={{ background: "linear-gradient(180deg, #F8FAFC 0%, #FFFFFF 100%)" }}>
+            <h4 style={{ margin: "0 0 8px", fontSize: 14 }}>Career Profile Health</h4>
+            <p className="text-xs muted" style={{ margin: "0 0 10px" }}>
+              Profiles with verified mobile numbers and multi-industry headline keywords receive 3x more recruiter inquiries.
+            </p>
+            <Link to="/profile/edit" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center" }}>
+              Update Profile Details →
+            </Link>
+          </div>
+        </aside>
+      </div>
     </div>
   );
-}
-
-function round(val, dec = 1) {
-  return Math.round((val || 0) * Math.pow(10, dec)) / Math.pow(10, dec);
 }

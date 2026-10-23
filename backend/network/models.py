@@ -1,21 +1,52 @@
 from django.db import models
 from django.conf import settings
+import re
+
+
+class Community(models.Model):
+    COMMUNITY_TYPE_CHOICES = (
+        ("open_source", "Open-Source Community"),
+        ("public_group", "Public Professional Group"),
+        ("private_group", "Private Group"),
+    )
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    community_type = models.CharField(max_length=30, choices=COMMUNITY_TYPE_CHOICES, default="public_group")
+    creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_communities")
+    members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="joined_communities", blank=True)
+    avatar = models.ImageField(upload_to="community_avatars/", null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.name} ({self.community_type})"
+
+
+class CommunityMessage(models.Model):
+    community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="messages")
+    sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="community_messages")
+    content = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"[{self.community.name}] {self.sender.username}: {self.content[:20]}"
 
 
 class Post(models.Model):
-    POST_TYPE_CHOICES = (
-        ("update", "General Update"),
-        ("job_posting", "Job Posting"),
-        ("project", "Project Build"),
-        ("article", "Article"),
-    )
-
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="posts")
-    post_type = models.CharField(max_length=20, choices=POST_TYPE_CHOICES, default="update")
     content = models.TextField()
     image = models.ImageField(upload_to="post_images/", null=True, blank=True)
+    hashtags = models.CharField(max_length=255, blank=True)
+    community = models.ForeignKey(Community, on_delete=models.SET_NULL, null=True, blank=True, related_name="posts")
 
-    # Optional link back to a Job posting if post_type == job_posting
+    # Optional link back to a Job posting
     related_job = models.ForeignKey(
         "jobs.Job", on_delete=models.SET_NULL, null=True, blank=True, related_name="promo_posts"
     )
@@ -25,6 +56,13 @@ class Post(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        # Automatically extract and store hashtags from post content
+        tags = re.findall(r"#\w+", self.content or "")
+        if tags:
+            self.hashtags = " ".join(dict.fromkeys(tags))
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Post<{self.author}: {self.content[:30]}>"
@@ -70,15 +108,10 @@ class Connection(models.Model):
 
 
 class Message(models.Model):
-    MESSAGE_TYPES = (
-        ("private", "Private Direct Message"),
-        ("public", "Public Note / InMail"),
-    )
-
+    """Personal 1-on-1 direct messages between individuals."""
     sender = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_messages")
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_messages")
     content = models.TextField()
-    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPES, default="private")
     is_read = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -86,4 +119,4 @@ class Message(models.Model):
         ordering = ["created_at"]
 
     def __str__(self):
-        return f"Msg<{self.sender.username} -> {self.recipient.username}: {self.content[:20]}>"
+        return f"DirectMsg<{self.sender.username} -> {self.recipient.username}: {self.content[:20]}>"

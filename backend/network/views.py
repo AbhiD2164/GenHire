@@ -1,29 +1,43 @@
 from django.db.models import Q
+from django.utils.text import slugify
+import uuid
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import PermissionDenied
 
-from .models import Post, Like, Comment, Connection, Message
-from .serializers import PostSerializer, CommentSerializer, ConnectionSerializer, MessageSerializer
+from .models import Post, Like, Comment, Connection, Message, Community, CommunityMessage
+from .serializers import (
+    PostSerializer, CommentSerializer, ConnectionSerializer, MessageSerializer,
+    CommunitySerializer, CommunityMessageSerializer,
+)
 
 
 class FeedView(generics.ListCreateAPIView):
     """
-    LinkedIn-style feed: shows all posts (general updates, job postings,
-    project builds, articles), newest first.
+    LinkedIn-style professional feed: shows posts with hashtag extraction,
+    reactions, and comments. No rigid category dropdowns required.
     """
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Post.objects.select_related("author", "related_job").prefetch_related("likes", "comments")
-        post_type = self.request.query_params.get("post_type")
+        qs = Post.objects.select_related("author", "related_job", "community").prefetch_related("likes", "comments")
+        hashtag = self.request.query_params.get("hashtag")
         author_id = self.request.query_params.get("author")
-        if post_type:
-            qs = qs.filter(post_type=post_type)
+        community_id = self.request.query_params.get("community")
+        search = self.request.query_params.get("search")
+
+        if hashtag:
+            clean_tag = hashtag if hashtag.startswith("#") else f"#{hashtag}"
+            qs = qs.filter(hashtags__icontains=clean_tag)
         if author_id:
             qs = qs.filter(author_id=author_id)
+        if community_id:
+            qs = qs.filter(community_id=community_id)
+        if search:
+            qs = qs.filter(Q(content__icontains=search) | Q(hashtags__icontains=search) | Q(author__username__icontains=search))
+
         return qs
 
     def perform_create(self, serializer):
@@ -88,17 +102,17 @@ class SendConnectionRequestView(APIView):
             Q(from_user=request.user, to_user_id=user_id) | Q(from_user_id=user_id, to_user=request.user)
         ).first()
         if existing:
-            return Response(ConnectionSerializer(existing).data, status=status.HTTP_200_OK)
+            return Response(ConnectionSerializer(existing, context={"request": request}).data, status=status.HTTP_200_OK)
 
         connection = Connection.objects.create(from_user=request.user, to_user_id=user_id, status="pending")
-        return Response(ConnectionSerializer(connection).data, status=status.HTTP_201_CREATED)
+        return Response(ConnectionSerializer(connection, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 
 class RespondConnectionRequestView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, connection_id):
-        action = request.data.get("action")  # "accept" or "decline"
+        action = request.data.get("action")
         try:
             connection = Connection.objects.get(id=connection_id, to_user=request.user)
         except Connection.DoesNotExist:
@@ -109,7 +123,7 @@ class RespondConnectionRequestView(APIView):
 
         connection.status = "accepted" if action == "accept" else "declined"
         connection.save()
-        return Response(ConnectionSerializer(connection).data)
+        return Response(ConnectionSerializer(connection, context={"request": request}).data)
 
 
 class MyConnectionsView(APIView):
@@ -119,20 +133,46 @@ class MyConnectionsView(APIView):
         user = request.user
         accepted = Connection.objects.filter(
             Q(from_user=user) | Q(to_user=user), status="accepted"
-        )
-        pending_received = Connection.objects.filter(to_user=user, status="pending")
-        pending_sent = Connection.objects.filter(from_user=user, status="pending")
+        ).select_related("from_user", "to_user", "from_user__profile", "to_user__profile")
+        pending_received = Connection.objects.filter(to_user=user, status="pending").select_related("from_user", "from_user__profile")
+        pending_sent = Connection.objects.filter(from_user=user, status="pending").select_related("to_user", "to_user__profile")
 
         return Response({
-            "connections": ConnectionSerializer(accepted, many=True).data,
-            "pending_received": ConnectionSerializer(pending_received, many=True).data,
-            "pending_sent": ConnectionSerializer(pending_sent, many=True).data,
+            "connections": ConnectionSerializer(accepted, many=True, context={"request": request}).data,
+            "pending_received": ConnectionSerializer(pending_received, many=True, context={"request": request}).data,
+            "pending_sent": ConnectionSerializer(pending_sent, many=True, context={"request": request}).data,
         })
 
 
+class SuggestedPeopleView(APIView):
+    """
+    LinkedIn-style suggestions: people user may know, excluding already connected/pending members.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        connected_pairs = Connection.objects.filter(
+            Q(from_user=user) | Q(to_user=user)
+        ).values_list("from_user_id", "to_user_id")
+
+        exclude_ids = {user.id}
+        for f, t in connected_pairs:
+            exclude_ids.add(f)
+            exclude_ids.add(t)
+
+        from accounts.models import CustomUser
+        from accounts.serializers import UserSummarySerializer
+
+        suggestions = CustomUser.objects.exclude(id__in=exclude_ids).select_related("profile").order_by("-date_joined")[:12]
+        return Response(UserSummarySerializer(suggestions, many=True).data)
+
+
+# ---------- Personal Direct Messaging (1-on-1) ----------
+
 class ConversationListView(APIView):
     """
-    List all active conversation threads for the current user.
+    List all active 1-on-1 personal direct chat threads for the current user.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -156,7 +196,6 @@ class ConversationListView(APIView):
                     "last_message": msg.content,
                     "last_message_time": msg.created_at,
                     "unread_count": unread,
-                    "message_type": msg.message_type,
                 }
 
         return Response(list(conversations.values()))
@@ -164,25 +203,23 @@ class ConversationListView(APIView):
 
 class ConversationMessagesView(APIView):
     """
-    Get messages between request.user and a partner, and send new messages.
+    Personal 1-on-1 messages between request.user and a partner.
     """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request, partner_id):
         user = request.user
-        # Mark incoming messages as read
         Message.objects.filter(sender_id=partner_id, recipient=user, is_read=False).update(is_read=True)
 
         messages = Message.objects.filter(
             Q(sender=user, recipient_id=partner_id) | Q(sender_id=partner_id, recipient=user)
-        ).select_related("sender", "recipient").order_by("created_at")
+        ).select_related("sender", "recipient", "sender__profile", "recipient__profile").order_by("created_at")
 
         return Response(MessageSerializer(messages, many=True).data)
 
     def post(self, request, partner_id):
         user = request.user
         content = request.data.get("content", "").strip()
-        message_type = request.data.get("message_type", "private")
 
         if not content:
             return Response({"detail": "Message content cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
@@ -197,7 +234,6 @@ class ConversationMessagesView(APIView):
             sender=user,
             recipient=partner,
             content=content,
-            message_type=message_type,
         )
         return Response(MessageSerializer(msg).data, status=status.HTTP_201_CREATED)
 
@@ -208,3 +244,95 @@ class UnreadMessageCountView(APIView):
     def get(self, request):
         count = Message.objects.filter(recipient=request.user, is_read=False).count()
         return Response({"unread_count": count})
+
+
+# ---------- Communities & Groups ----------
+
+class CommunityListCreateView(generics.ListCreateAPIView):
+    """
+    List open-source communities and public/private groups, or create a new community.
+    """
+    serializer_class = CommunitySerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        qs = Community.objects.all().prefetch_related("members")
+        ctype = self.request.query_params.get("type")
+        mine = self.request.query_params.get("mine")
+        search = self.request.query_params.get("search")
+
+        if ctype:
+            qs = qs.filter(community_type=ctype)
+        if mine == "true":
+            qs = qs.filter(Q(creator=self.request.user) | Q(members=self.request.user)).distinct()
+        if search:
+            qs = qs.filter(Q(name__icontains=search) | Q(description__icontains=search))
+
+        return qs
+
+    def perform_create(self, serializer):
+        name = serializer.validated_data.get("name", "Community")
+        slug_base = slugify(name) or "community"
+        unique_slug = f"{slug_base}-{uuid.uuid4().hex[:6]}"
+        community = serializer.save(creator=self.request.user, slug=unique_slug)
+        community.members.add(self.request.user)
+
+
+class CommunityDetailView(generics.RetrieveAPIView):
+    queryset = Community.objects.all().prefetch_related("members", "posts")
+    serializer_class = CommunitySerializer
+    permission_classes = [permissions.IsAuthenticated]
+    lookup_field = "id"
+
+
+class ToggleCommunityMembershipView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, community_id):
+        try:
+            comm = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({"detail": "Community not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        is_member = comm.members.filter(id=request.user.id).exists()
+        if is_member:
+            comm.members.remove(request.user)
+            joined = False
+        else:
+            comm.members.add(request.user)
+            joined = True
+
+        return Response({"joined": joined, "members_count": comm.members.count()})
+
+
+class CommunityMessagesView(APIView):
+    """
+    Group messaging inside an open-source community or private/public group.
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request, community_id):
+        try:
+            comm = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({"detail": "Community not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        messages = CommunityMessage.objects.filter(community=comm).select_related("sender", "sender__profile").order_by("created_at")
+        return Response(CommunityMessageSerializer(messages, many=True).data)
+
+    def post(self, request, community_id):
+        try:
+            comm = Community.objects.get(id=community_id)
+        except Community.DoesNotExist:
+            return Response({"detail": "Community not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        content = request.data.get("content", "").strip()
+        if not content:
+            return Response({"detail": "Message content cannot be empty."}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Auto-join community if not member
+        if not comm.members.filter(id=request.user.id).exists():
+            comm.members.add(request.user)
+
+        msg = CommunityMessage.objects.create(community=comm, sender=request.user, content=content)
+        return Response(CommunityMessageSerializer(msg).data, status=status.HTTP_201_CREATED)

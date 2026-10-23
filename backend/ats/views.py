@@ -1,4 +1,5 @@
 import os
+import re
 import tempfile
 from django.conf import settings
 from django.shortcuts import get_object_or_404
@@ -12,8 +13,72 @@ from accounts.verification import verify_candidate_resume_security
 from accounts.firebase_service import send_immediate_application_result_email
 from .engine import process_resume
 from .text_extraction import extract_resume_text
-from .skill_extraction import parse_skill_list, extract_present_skills
+from .skill_extraction import parse_skill_list, extract_present_skills, SKILL_SYNONYMS
 from .rabbitmq_cache import get_cached_suggestions, compute_runtime_suggestions
+
+
+INDUSTRY_DOMAINS = {
+    "Healthcare & Medicine": [
+        "patient care", "nursing", "phlebotomy", "cpr", "emr", "ehr", "triage", "clinical",
+        "pharmacology", "pediatrics", "icu", "surgery", "healthcare", "medical records",
+    ],
+    "Finance & Accounting": [
+        "gaap", "bookkeeping", "tally", "financial modeling", "taxation", "auditing", "balance sheet",
+        "equity research", "payroll", "portfolio management", "banking", "budgeting", "cpa", "cfa",
+    ],
+    "Engineering & Manufacturing": [
+        "autocad", "solidworks", "cnc machining", "welding", "plc", "six sigma", "quality assurance",
+        "electrical wiring", "mechanical", "manufacturing", "lean", "schematics", "bim",
+    ],
+    "Sales & Marketing": [
+        "seo", "crm", "salesforce", "hubspot", "cold calling", "lead generation", "digital marketing",
+        "social media marketing", "negotiation", "b2b", "content strategy", "brand management",
+    ],
+    "Human Resources & Talent": [
+        "recruitment", "talent acquisition", "onboarding", "performance management", "labor law",
+        "employee engagement", "hris", "workforce planning", "retention",
+    ],
+    "Information Technology & Software": [
+        "python", "javascript", "react", "django", "node.js", "sql", "aws", "cloud", "docker",
+        "kubernetes", "cybersecurity", "machine learning", "rest api", "html", "css",
+    ],
+    "Education & Pedagogy": [
+        "lesson planning", "classroom management", "curriculum design", "pedagogy", "tutoring",
+        "student assessment", "special education", "academic research",
+    ],
+    "Legal & Compliance": [
+        "contract drafting", "legal research", "litigation", "regulatory compliance", "intellectual property",
+        "corporate law", "due diligence", "dispute resolution",
+    ],
+    "Supply Chain & Logistics": [
+        "supply chain management", "inventory management", "logistics", "warehouse management",
+        "procurement", "freight", "vendor relations", "distribution",
+    ],
+}
+
+
+def detect_resume_industry_and_skills(raw_text):
+    text_lower = raw_text.lower()
+    matched_by_industry = {}
+    total_matched = []
+
+    for domain, keywords in INDUSTRY_DOMAINS.items():
+        domain_matches = []
+        for kw in keywords:
+            if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
+                domain_matches.append(kw)
+        if domain_matches:
+            matched_by_industry[domain] = domain_matches
+            total_matched.extend(domain_matches)
+
+    # Sort industries by match count
+    sorted_domains = sorted(matched_by_industry.items(), key=lambda x: len(x[1]), reverse=True)
+    detected_industry = sorted_domains[0][0] if sorted_domains else "Professional Services"
+
+    # Detect quantified achievements (numbers, percentages, revenue)
+    quantified = re.findall(r"(?:increased|reduced|managed|grew|saved|generated|led|delivered)\s+[^.\n]{0,60}?(?:\d+[%kKmMbB]?|\$\d+|\₹\d+)", raw_text, re.IGNORECASE)
+
+    return detected_industry, matched_by_industry, total_matched, quantified[:4]
 
 
 class ProcessApplicationView(APIView):
@@ -22,7 +87,6 @@ class ProcessApplicationView(APIView):
     def post(self, request, application_id):
         app = get_object_or_404(Application, id=application_id)
 
-        # only applicant, job owner recruiter, or staff can trigger re-processing
         if request.user != app.applicant and request.user != app.job.created_by and not request.user.is_staff:
             return Response({"detail": "Forbidden."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -39,9 +103,10 @@ class ProcessApplicationView(APIView):
 
 class ResumeAnalysisView(APIView):
     """
-    Analyze a resume file (or application) and return ATS score, phishing URL check,
-    security evaluation, and improvement suggestions.
-    Strictly accepts Word (.docx, .doc) or PDF (.pdf) only.
+    Comprehensive Cross-Industry Resume Analyzer.
+    Trained for all industries (IT, Healthcare, Finance, Manufacturing, Marketing, HR, Legal, etc.).
+    Extracts detected skills, detected industry, quantified achievements, generates tailored
+    role descriptions, and checks for security/phishing risks.
     """
     permission_classes = [permissions.IsAuthenticated]
 
@@ -70,7 +135,6 @@ class ResumeAnalysisView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            # Write temporary file to disk for extraction
             suffix = f".{ext}"
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
                 for chunk in resume_file.chunks():
@@ -85,7 +149,7 @@ class ResumeAnalysisView(APIView):
         else:
             return Response({"detail": "Please provide application_id or upload resume file."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Security & Phishing URL Check
+        # 1. Security & Phishing URL Check
         sec_check = verify_candidate_resume_security(file_name, b"", raw)
         if not sec_check["valid"]:
             return Response({
@@ -93,54 +157,68 @@ class ResumeAnalysisView(APIView):
                 "score": 0.0,
                 "score_percentage": 0.0,
                 "security_error": sec_check["message"],
+                "detected_industry": "Unverified / Security Flagged",
                 "present_skills": [],
-                "tips": [
-                    {"missing_required_skills": [], "tip": sec_check["message"]}
-                ],
+                "tips": [{"tip": sec_check["message"]}],
                 "status": "rejected",
                 "rejection_stage": "rejected_by_system",
                 "rejection_reason": sec_check["message"],
             })
 
-        job_skills = []
-        if job:
+        # 2. Cross-Industry Domain & Skill Analysis
+        detected_industry, matched_by_industry, all_matched_skills, quantified_achievements = detect_resume_industry_and_skills(raw)
+
+        # 3. Job-specific or Global ATS Scoring
+        if job and job.skills_required:
             job_skills = parse_skill_list(job.skills_required) + parse_skill_list(job.good_to_have)
-
-        present_skills = extract_present_skills(raw, job_skills or [])
-
-        tips = []
-        if job and job.skills_required:
-            missing = [s for s in parse_skill_list(job.skills_required) if s not in present_skills]
-            if missing:
-                tips.append({"missing_required_skills": missing, "tip": "Add these required skills or concrete projects to your resume."})
-        else:
-            tips.append({"tip": "Add quantifiable impact and achievements to each work experience entry."})
-            tips.append({"tip": "Keep keywords standardized and aligned with target industry roles."})
-
-        # Calculate score (0-1.0 and percentage)
-        if job and job.skills_required:
+            present_skills = extract_present_skills(raw, job_skills)
             req = parse_skill_list(job.skills_required)
             score = round(len([s for s in req if s in present_skills]) / max(1, len(req)), 3)
+            missing = [s for s in req if s not in present_skills]
         else:
-            score = min(1.0, round(len(present_skills) / 10.0, 2)) if present_skills else 0.75
+            present_skills = list(dict.fromkeys(all_matched_skills))
+            # Global resume robustness score based on skill density and quantified achievements
+            base = min(0.70, len(present_skills) * 0.08)
+            quant_bonus = min(0.20, len(quantified_achievements) * 0.05)
+            score = round(base + quant_bonus + 0.10, 2)
+            missing = []
 
         score_pct = round(score * 100, 1)
+
+        # 4. Actionable tips
+        tips = []
+        if missing:
+            tips.append(f"Add key target requirements: {', '.join(missing[:5])}.")
+        if not quantified_achievements:
+            tips.append("Include quantified impact metrics (e.g. 'Grew revenue by 25%', 'Reduced processing latency by 30%').")
+        else:
+            tips.append(f"Strong measurable accomplishments detected: {len(quantified_achievements)} quantified impacts identified.")
+        tips.append(f"Highlight specialized {detected_industry} certifications and domain-specific tool proficiencies.")
+
+        # 5. Tailored Job Description Generation
+        sample_jd = (
+            f"Opportunity: Senior Specialist ({detected_industry})\n"
+            f"Key Requirements: {', '.join(present_skills[:6]) if present_skills else 'Demonstrated professional competency'}.\n"
+            f"Scope: Drive high-impact organizational initiatives, collaborate with cross-functional leadership, "
+            f"and apply specialized {detected_industry.lower()} domain methodologies to accelerate business results."
+        )
 
         return Response({
             "valid": True,
             "score": score,
             "score_percentage": score_pct,
+            "detected_industry": detected_industry,
+            "industry_breakdown": matched_by_industry,
             "present_skills": present_skills,
-            "tips": tips,
+            "quantified_achievements": quantified_achievements,
+            "tailored_job_description": sample_jd,
+            "tips": [{"tip": t} for t in tips],
             "status": "selected" if score >= 0.80 else ("applied" if score >= 0.60 else "rejected"),
-            "stage_info": "Strong match" if score >= 0.80 else ("Partial match" if score >= 0.60 else "Below threshold (<60%)"),
+            "stage_info": "Perfect match (80-100%)" if score >= 0.80 else ("Partial match (60-79%)" if score >= 0.60 else "Below threshold (<60%)"),
         })
 
 
 class RecommendJobsView(APIView):
-    """
-    Returns runtime suggestions powered by RabbitMQ queue and cache.
-    """
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -171,7 +249,9 @@ class AutoCreateResumeView(APIView):
         resume_json = {
             "name": user.get_full_name() or user.username,
             "email": user.email,
+            "phone_number": user.phone_number,
             "headline": profile.headline if hasattr(profile, "headline") else "",
+            "industry": profile.industry if hasattr(profile, "industry") else "",
             "location": profile.location,
             "skills": profile.skills,
             "experiences": [

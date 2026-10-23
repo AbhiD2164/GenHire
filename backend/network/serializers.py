@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Post, Like, Comment, Connection, Message
+from .models import Post, Like, Comment, Connection, Message, Community, CommunityMessage
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -33,15 +33,16 @@ class PostSerializer(serializers.ModelSerializer):
     liked_by_me = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True, read_only=True)
     related_job_title = serializers.CharField(source="related_job.title", read_only=True, default=None)
+    community_name = serializers.CharField(source="community.name", read_only=True, default=None)
 
     class Meta:
         model = Post
         fields = [
             "id", "author", "author_name", "author_role", "author_headline", "author_avatar",
-            "post_type", "content", "image", "related_job", "related_job_title",
+            "content", "hashtags", "community", "community_name", "image", "related_job", "related_job_title",
             "created_at", "updated_at", "like_count", "comment_count", "liked_by_me", "comments",
         ]
-        read_only_fields = ["author", "created_at", "updated_at"]
+        read_only_fields = ["author", "created_at", "updated_at", "hashtags"]
 
     def get_author_name(self, obj):
         return obj.author.get_full_name() or obj.author.username
@@ -78,12 +79,15 @@ class ConnectionSerializer(serializers.ModelSerializer):
     to_user_name = serializers.SerializerMethodField()
     from_user_headline = serializers.SerializerMethodField()
     to_user_headline = serializers.SerializerMethodField()
+    from_user_avatar = serializers.SerializerMethodField()
+    to_user_avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = Connection
         fields = [
             "id", "from_user", "to_user", "status", "created_at", "updated_at",
             "from_user_name", "to_user_name", "from_user_headline", "to_user_headline",
+            "from_user_avatar", "to_user_avatar",
         ]
         read_only_fields = ["from_user", "status", "created_at", "updated_at"]
 
@@ -105,8 +109,21 @@ class ConnectionSerializer(serializers.ModelSerializer):
         except Exception:
             return ""
 
+    def get_from_user_avatar(self, obj):
+        try:
+            return obj.from_user.profile.avatar.url if obj.from_user.profile.avatar else None
+        except Exception:
+            return None
+
+    def get_to_user_avatar(self, obj):
+        try:
+            return obj.to_user.profile.avatar.url if obj.to_user.profile.avatar else None
+        except Exception:
+            return None
+
 
 class MessageSerializer(serializers.ModelSerializer):
+    """Personal 1-on-1 direct message serializer."""
     sender_name = serializers.SerializerMethodField()
     sender_username = serializers.CharField(source="sender.username", read_only=True)
     sender_avatar = serializers.SerializerMethodField()
@@ -119,7 +136,7 @@ class MessageSerializer(serializers.ModelSerializer):
         fields = [
             "id", "sender", "sender_name", "sender_username", "sender_avatar",
             "recipient", "recipient_name", "recipient_username", "recipient_avatar",
-            "content", "message_type", "is_read", "created_at"
+            "content", "is_read", "created_at"
         ]
         read_only_fields = ["sender", "is_read", "created_at"]
 
@@ -140,3 +157,50 @@ class MessageSerializer(serializers.ModelSerializer):
             return obj.recipient.profile.avatar.url if obj.recipient.profile.avatar else None
         except Exception:
             return None
+
+
+class CommunityMessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+    sender_username = serializers.CharField(source="sender.username", read_only=True)
+    sender_avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommunityMessage
+        fields = ["id", "community", "sender", "sender_name", "sender_username", "sender_avatar", "content", "created_at"]
+        read_only_fields = ["sender", "created_at"]
+
+    def get_sender_name(self, obj):
+        return obj.sender.get_full_name() or obj.sender.username
+
+    def get_sender_avatar(self, obj):
+        try:
+            return obj.sender.profile.avatar.url if obj.sender.profile.avatar else None
+        except Exception:
+            return None
+
+
+class CommunitySerializer(serializers.ModelSerializer):
+    creator_name = serializers.SerializerMethodField()
+    members_count = serializers.SerializerMethodField()
+    is_member = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Community
+        fields = [
+            "id", "name", "slug", "description", "community_type",
+            "creator", "creator_name", "members_count", "is_member",
+            "avatar", "created_at",
+        ]
+        read_only_fields = ["creator", "created_at"]
+
+    def get_creator_name(self, obj):
+        return obj.creator.get_full_name() or obj.creator.username
+
+    def get_members_count(self, obj):
+        return obj.members.count()
+
+    def get_is_member(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.members.filter(id=request.user.id).exists()

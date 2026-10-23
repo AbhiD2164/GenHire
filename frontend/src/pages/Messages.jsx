@@ -1,161 +1,312 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useSearchParams, Link } from "react-router-dom";
-import { getConversations, getConversationMessages, sendMessage } from "../api/network";
+import {
+  getConversations,
+  getConversationMessages,
+  sendMessage,
+  getCommunities,
+  getCommunityMessages,
+  sendCommunityMessage,
+} from "../api/network";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
 export default function Messages() {
   const { profile } = useAuth();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const directPartnerId = searchParams.get("to");
+  const directCommunityId = searchParams.get("community");
 
+  // Main Category Tab: 'personal' (1-on-1) or 'groups' (Communities & Open-Source)
+  const [channelType, setChannelType] = useState(directCommunityId ? "groups" : "personal");
+
+  // Personal Direct Chats state
   const [conversations, setConversations] = useState([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState(directPartnerId ? parseInt(directPartnerId) : null);
   const [activePartner, setActivePartner] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [messageText, setMessageText] = useState("");
-  const [messageType, setMessageType] = useState("private");
-  const [loadingList, setLoadingList] = useState(true);
-  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [personalMessages, setPersonalMessages] = useState([]);
+  const [personalText, setPersonalText] = useState("");
+
+  // Communities & Groups state
+  const [communities, setCommunities] = useState([]);
+  const [selectedCommunityId, setSelectedCommunityId] = useState(
+    directCommunityId ? parseInt(directCommunityId) : null
+  );
+  const [activeCommunity, setActiveCommunity] = useState(null);
+  const [communityMessages, setCommunityMessages] = useState([]);
+  const [communityText, setCommunityText] = useState("");
+
+  const [loadingThreads, setLoadingThreads] = useState(true);
+  const [loadingChat, setLoadingChat] = useState(false);
   const [sending, setSending] = useState(false);
 
   const messagesEndRef = useRef(null);
   const { showToast } = useToast();
 
-  const fetchConversations = useCallback(async () => {
-    try {
-      const data = await getConversations();
-      setConversations(data || []);
-      if (!selectedPartnerId && data && data.length > 0) {
-        setSelectedPartnerId(data[0].partner_id);
-        setActivePartner(data[0]);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoadingList(false);
-    }
-  }, [selectedPartnerId]);
-
-  useEffect(() => {
-    fetchConversations();
-  }, [fetchConversations]);
-
-  const fetchMessages = useCallback(async (partnerId) => {
-    if (!partnerId) return;
-    setLoadingMessages(true);
-    try {
-      const data = await getConversationMessages(partnerId);
-      setMessages(data || []);
-    } catch {
-      showToast("Could not load messages.", "error");
-    } finally {
-      setLoadingMessages(false);
-    }
-  }, [showToast]);
-
-  useEffect(() => {
-    if (selectedPartnerId) {
-      fetchMessages(selectedPartnerId);
-      const found = conversations.find((c) => c.partner_id === selectedPartnerId);
-      if (found) setActivePartner(found);
-    }
-  }, [selectedPartnerId, fetchMessages, conversations]);
-
+  // Scroll to bottom helper
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [personalMessages, communityMessages]);
 
-  async function handleSendMessage(e) {
+  // Load threads when channelType changes
+  useEffect(() => {
+    async function loadThreads() {
+      setLoadingThreads(true);
+      try {
+        if (channelType === "personal") {
+          const data = await getConversations();
+          setConversations(data || []);
+          if (!selectedPartnerId && data && data.length > 0) {
+            setSelectedPartnerId(data[0].partner_id);
+            setActivePartner(data[0]);
+          } else if (selectedPartnerId && data) {
+            const found = data.find((c) => c.partner_id === selectedPartnerId);
+            if (found) setActivePartner(found);
+          }
+        } else {
+          const commData = await getCommunities();
+          setCommunities(commData || []);
+          if (!selectedCommunityId && commData && commData.length > 0) {
+            setSelectedCommunityId(commData[0].id);
+            setActiveCommunity(commData[0]);
+          } else if (selectedCommunityId && commData) {
+            const found = commData.find((c) => c.id === selectedCommunityId);
+            if (found) setActiveCommunity(found);
+          }
+        }
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingThreads(false);
+      }
+    }
+    loadThreads();
+  }, [channelType, selectedPartnerId, selectedCommunityId]);
+
+  // Load 1-on-1 messages when partner changes
+  const fetchPersonalMessages = useCallback(
+    async (partnerId) => {
+      if (!partnerId) return;
+      setLoadingChat(true);
+      try {
+        const msgs = await getConversationMessages(partnerId);
+        setPersonalMessages(msgs || []);
+      } catch {
+        showToast("Could not load personal conversation.", "error");
+      } finally {
+        setLoadingChat(false);
+      }
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    if (channelType === "personal" && selectedPartnerId) {
+      fetchPersonalMessages(selectedPartnerId);
+    }
+  }, [channelType, selectedPartnerId, fetchPersonalMessages]);
+
+  // Load community messages when community changes
+  const fetchCommunityMessages = useCallback(
+    async (commId) => {
+      if (!commId) return;
+      setLoadingChat(true);
+      try {
+        const msgs = await getCommunityMessages(commId);
+        setCommunityMessages(msgs || []);
+      } catch {
+        showToast("Could not load community group messages.", "error");
+      } finally {
+        setLoadingChat(false);
+      }
+    },
+    [showToast]
+  );
+
+  useEffect(() => {
+    if (channelType === "groups" && selectedCommunityId) {
+      fetchCommunityMessages(selectedCommunityId);
+    }
+  }, [channelType, selectedCommunityId, fetchCommunityMessages]);
+
+  // Send Personal 1-on-1 Message
+  async function handleSendPersonal(e) {
     e.preventDefault();
-    if (!messageText.trim() || !selectedPartnerId) return;
+    if (!personalText.trim() || !selectedPartnerId) return;
     setSending(true);
     try {
-      const newMsg = await sendMessage(selectedPartnerId, {
-        content: messageText.trim(),
-        message_type: messageType,
-      });
-      setMessages((prev) => [...prev, newMsg]);
-      setMessageText("");
-      fetchConversations();
+      const sent = await sendMessage(selectedPartnerId, { content: personalText.trim() });
+      setPersonalMessages((prev) => [...prev, sent]);
+      setPersonalText("");
+      // Update snippet in conversation list
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.partner_id === selectedPartnerId ? { ...c, last_message: sent.content } : c
+        )
+      );
     } catch (err) {
-      showToast(err.response?.data?.detail || "Could not send message.", "error");
+      showToast(err?.response?.data?.detail || "Message delivery failed.", "error");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Send Community / Group Message
+  async function handleSendCommunity(e) {
+    e.preventDefault();
+    if (!communityText.trim() || !selectedCommunityId) return;
+    setSending(true);
+    try {
+      const sent = await sendCommunityMessage(selectedCommunityId, communityText.trim());
+      setCommunityMessages((prev) => [...prev, sent]);
+      setCommunityText("");
+    } catch (err) {
+      showToast(err?.response?.data?.detail || "Group message delivery failed.", "error");
     } finally {
       setSending(false);
     }
   }
 
   return (
-    <div className="page container messages-page">
-      <div style={{ marginBottom: 16 }}>
-        <span className="eyebrow" style={{ margin: 0 }}>Networking Communications</span>
-        <h1 style={{ fontSize: "1.75rem", margin: "4px 0 0" }}>Messages</h1>
-        <p className="muted text-sm">Direct private conversations and professional inquiries with your connections.</p>
+    <div className="container page" style={{ paddingTop: 16 }}>
+      {/* Header bar */}
+      <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <span className="eyebrow" style={{ margin: 0 }}>Communication Hub</span>
+          <h1 style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800 }}>Messaging & Communities</h1>
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link to="/network" className="btn btn-outline btn-sm">
+            Manage Network
+          </Link>
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "320px 1fr", gap: 16, minHeight: 520, background: "var(--card-bg, #1a1e27)", border: "1px solid var(--border-color, #2a2f3d)", borderRadius: 12, overflow: "hidden" }}>
-        {/* Left: Conversation list */}
-        <div style={{ borderRight: "1px solid var(--border-color, #2a2f3d)", display: "flex", flexDirection: "column" }}>
-          <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--border-color, #2a2f3d)", fontWeight: 600, fontSize: "0.95rem" }}>
-            Conversations ({conversations.length})
+      {/* Main Messaging Container */}
+      <div className="messages-container">
+        {/* Left Side: Tabs + Threads */}
+        <div className="messages-sidebar">
+          {/* Top Tabs */}
+          <div className="messages-tabs-header">
+            <button
+              className={`messages-tab-btn ${channelType === "personal" ? "active" : ""}`}
+              onClick={() => {
+                setChannelType("personal");
+                setSearchParams({});
+              }}
+            >
+              Direct Chats (1-on-1)
+            </button>
+            <button
+              className={`messages-tab-btn ${channelType === "groups" ? "active" : ""}`}
+              onClick={() => {
+                setChannelType("groups");
+                setSearchParams({});
+              }}
+            >
+              Communities & Groups
+            </button>
           </div>
 
-          <div style={{ flex: 1, overflowY: "auto" }}>
-            {loadingList ? (
-              <div style={{ display: "flex", justifyContent: "center", padding: 30 }}><div className="spinner" /></div>
-            ) : conversations.length === 0 ? (
-              <div style={{ padding: 24, textAlign: "center", color: "var(--text-muted, #8b949e)", fontSize: "0.88rem" }}>
-                No message threads yet. Visit candidate or connection profiles to start conversations.
+          {/* Thread List */}
+          <div className="messages-thread-list">
+            {loadingThreads ? (
+              <div style={{ textAlign: "center", padding: 36 }}>
+                <div className="spinner" />
+              </div>
+            ) : channelType === "personal" ? (
+              conversations.length === 0 ? (
+                <div style={{ padding: 24, textAlign: "center" }}>
+                  <p className="muted text-sm">No 1-on-1 chats yet.</p>
+                  <p className="text-xs muted">
+                    Connect with candidates or recruiters from your network to start chatting!
+                  </p>
+                </div>
+              ) : (
+                conversations.map((conv) => (
+                  <div
+                    key={conv.partner_id}
+                    className={`message-thread-item ${
+                      selectedPartnerId === conv.partner_id ? "active" : ""
+                    }`}
+                    onClick={() => {
+                      setSelectedPartnerId(conv.partner_id);
+                      setActivePartner(conv);
+                    }}
+                  >
+                    {conv.partner_avatar ? (
+                      <img
+                        src={conv.partner_avatar}
+                        alt={conv.partner_name}
+                        className="message-thread-avatar"
+                      />
+                    ) : (
+                      <div className="message-thread-avatar">
+                        {(conv.partner_name || "U").charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="message-thread-info">
+                      <div className="message-thread-name">
+                        <span>{conv.partner_name}</span>
+                        {conv.unread_count > 0 && (
+                          <span
+                            className="badge"
+                            style={{ background: "var(--brand-strong)", color: "#fff", fontSize: 10 }}
+                          >
+                            {conv.unread_count}
+                          </span>
+                        )}
+                      </div>
+                      <p className="message-thread-snippet">
+                        {conv.last_message || "Active connection"}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )
+            ) : communities.length === 0 ? (
+              <div style={{ padding: 24, textAlign: "center" }}>
+                <p className="muted text-sm">No communities joined yet.</p>
+                <Link to="/network" className="btn btn-outline btn-sm" style={{ marginTop: 8 }}>
+                  Explore Communities
+                </Link>
               </div>
             ) : (
-              conversations.map((conv) => (
+              communities.map((comm) => (
                 <div
-                  key={conv.partner_id}
+                  key={comm.id}
+                  className={`message-thread-item ${
+                    selectedCommunityId === comm.id ? "active" : ""
+                  }`}
                   onClick={() => {
-                    setSelectedPartnerId(conv.partner_id);
-                    setActivePartner(conv);
-                  }}
-                  style={{
-                    padding: "12px 14px",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    cursor: "pointer",
-                    borderBottom: "1px solid rgba(255,255,255,0.04)",
-                    background: selectedPartnerId === conv.partner_id ? "rgba(99, 102, 241, 0.12)" : "transparent",
+                    setSelectedCommunityId(comm.id);
+                    setActiveCommunity(comm);
                   }}
                 >
                   <div
-                    style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: "50%",
-                      background: "var(--brand-primary, #6366f1)",
-                      color: "#fff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 600,
-                      fontSize: "0.9rem",
-                      flexShrink: 0,
-                    }}
+                    className="message-thread-avatar"
+                    style={{ background: "#E0F2FE", color: "var(--brand-strong)", borderRadius: 8 }}
                   >
-                    {(conv.partner_name || "?")[0].toUpperCase()}
+                    {comm.name.charAt(0).toUpperCase()}
                   </div>
-
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <strong style={{ fontSize: "0.9rem", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {conv.partner_name}
-                      </strong>
-                      {conv.unread_count > 0 && (
-                        <span style={{ background: "#6366f1", color: "#fff", borderRadius: 10, padding: "2px 6px", fontSize: "0.72rem", fontWeight: 700 }}>
-                          {conv.unread_count}
-                        </span>
-                      )}
+                  <div className="message-thread-info">
+                    <div className="message-thread-name">
+                      <span>{comm.name}</span>
+                      <span
+                        className={`community-pill ${
+                          comm.community_type === "opensource"
+                            ? "opensource"
+                            : comm.community_type === "private"
+                            ? "private"
+                            : "public"
+                        }`}
+                        style={{ fontSize: 9 }}
+                      >
+                        {comm.community_type === "opensource" ? "OS" : comm.community_type}
+                      </span>
                     </div>
-                    <p style={{ margin: "2px 0 0", fontSize: "0.78rem", color: "var(--text-muted, #8b949e)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                      {conv.last_message || "Started a conversation"}
+                    <p className="message-thread-snippet">
+                      {comm.description || `${comm.members_count || 1} members active`}
                     </p>
                   </div>
                 </div>
@@ -164,60 +315,153 @@ export default function Messages() {
           </div>
         </div>
 
-        {/* Right: Active chat window */}
-        <div style={{ display: "flex", flexDirection: "column", height: 580 }}>
-          {selectedPartnerId ? (
-            <>
-              {/* Chat header */}
-              <div style={{ padding: "12px 18px", borderBottom: "1px solid var(--border-color, #2a2f3d)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ width: 36, height: 36, borderRadius: "50%", background: "#6366f1", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600 }}>
-                    {(activePartner?.partner_name || "U")[0].toUpperCase()}
+        {/* Right Side: Active Chat Stream */}
+        <div className="messages-main-pane">
+          {channelType === "personal" ? (
+            selectedPartnerId ? (
+              <>
+                <div className="messages-chat-header">
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <div
+                      className="message-thread-avatar"
+                      style={{ width: 38, height: 38, fontSize: 14 }}
+                    >
+                      {(activePartner?.partner_name || "U").charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <strong style={{ fontSize: 15, display: "block", color: "var(--ink)" }}>
+                        {activePartner?.partner_name || "Direct Message"}
+                      </strong>
+                      <span className="text-xs muted">
+                        {activePartner?.partner_headline || "1-on-1 Private Conversation"}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 style={{ margin: 0, fontSize: "1rem" }}>{activePartner?.partner_name || "Conversation"}</h3>
-                    <span className="text-xs muted">{activePartner?.partner_headline || "Active member"}</span>
-                  </div>
+                  <Link to={`/profile/${selectedPartnerId}`} className="btn btn-ghost btn-sm">
+                    View Profile
+                  </Link>
                 </div>
 
-                <Link to={`/profile/${selectedPartnerId}`} className="btn btn-outline btn-sm">
-                  View Profile
-                </Link>
+                {/* Message Bubbles */}
+                <div className="messages-bubble-stream">
+                  {loadingChat ? (
+                    <div style={{ margin: "auto" }}>
+                      <div className="spinner" />
+                    </div>
+                  ) : personalMessages.length === 0 ? (
+                    <div style={{ margin: "auto", textAlign: "center" }} className="muted text-sm">
+                      <p>Start a secure private conversation with this member.</p>
+                      <p className="text-xs">
+                        Exchange inquiries, schedule interviews, and share portfolio details.
+                      </p>
+                    </div>
+                  ) : (
+                    personalMessages.map((msg) => {
+                      const isMe = msg.sender === profile?.user_id || msg.sender_username === profile?.username;
+                      return (
+                        <div key={msg.id} className={`chat-bubble ${isMe ? "mine" : "theirs"}`}>
+                          <div>{msg.content}</div>
+                          <div className="chat-bubble-time">
+                            {new Date(msg.created_at).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Message Input */}
+                <form onSubmit={handleSendPersonal} className="messages-composer-bar">
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="Write a private message..."
+                    value={personalText}
+                    onChange={(e) => setPersonalText(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-sm"
+                    disabled={sending || !personalText.trim()}
+                  >
+                    {sending ? "Sending..." : "Send"}
+                  </button>
+                </form>
+              </>
+            ) : (
+              <div style={{ margin: "auto", textAlign: "center", padding: 40 }} className="muted">
+                <h4>No personal conversation selected</h4>
+                <p className="text-sm">Choose a contact on the left to read and send messages.</p>
+              </div>
+            )
+          ) : selectedCommunityId ? (
+            <>
+              <div className="messages-chat-header">
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    className="community-icon"
+                    style={{ width: 38, height: 38, fontSize: 15 }}
+                  >
+                    {(activeCommunity?.name || "C").charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <strong style={{ fontSize: 15, display: "block", color: "var(--ink)" }}>
+                      {activeCommunity?.name || "Community Group"}
+                    </strong>
+                    <span className="text-xs muted">
+                      {activeCommunity?.community_type === "opensource"
+                        ? "Open-Source Community Channel"
+                        : "Group Discussion"}{" "}
+                      • {activeCommunity?.members_count || 1} members
+                    </span>
+                  </div>
+                </div>
+                <span
+                  className={`community-pill ${
+                    activeCommunity?.community_type === "opensource"
+                      ? "opensource"
+                      : "public"
+                  }`}
+                >
+                  {activeCommunity?.community_type?.toUpperCase()}
+                </span>
               </div>
 
-              {/* Message scroll area */}
-              <div style={{ flex: 1, padding: "16px 20px", overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
-                {loadingMessages ? (
-                  <div style={{ display: "flex", justifyContent: "center", padding: 40 }}><div className="spinner" /></div>
-                ) : messages.length === 0 ? (
-                  <div style={{ margin: "auto", textAlign: "center", color: "var(--text-muted, #8b949e)", fontSize: "0.9rem" }}>
-                    Say hello! Send your first direct message below.
+              {/* Group Message Stream */}
+              <div className="messages-bubble-stream">
+                {loadingChat ? (
+                  <div style={{ margin: "auto" }}>
+                    <div className="spinner" />
+                  </div>
+                ) : communityMessages.length === 0 ? (
+                  <div style={{ margin: "auto", textAlign: "center" }} className="muted text-sm">
+                    <p>Welcome to #{activeCommunity?.name || "this community"}!</p>
+                    <p className="text-xs">
+                      Share updates, ask questions, and collaborate with all members of this group.
+                    </p>
                   </div>
                 ) : (
-                  messages.map((m) => {
-                    const isMe = m.sender === profile.user_id || m.sender_username === profile.username;
+                  communityMessages.map((msg) => {
+                    const isMe = msg.sender === profile?.user_id || msg.sender_name === profile?.username;
                     return (
-                      <div
-                        key={m.id}
-                        style={{
-                          alignSelf: isMe ? "flex-end" : "flex-start",
-                          maxWidth: "70%",
-                          background: isMe ? "var(--brand-primary, #6366f1)" : "var(--bg-subtle, #252a36)",
-                          color: isMe ? "#fff" : "inherit",
-                          padding: "10px 14px",
-                          borderRadius: isMe ? "14px 14px 2px 14px" : "14px 14px 14px 2px",
-                          fontSize: "0.9rem",
-                          boxShadow: "0 1px 3px rgba(0,0,0,0.15)",
-                        }}
-                      >
-                        <div>{m.content}</div>
-                        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 6, marginTop: 4 }}>
-                          {m.message_type === "public" && (
-                            <span style={{ fontSize: "0.68rem", opacity: 0.8 }}>Public Note</span>
-                          )}
-                          <span style={{ fontSize: "0.7rem", opacity: 0.75 }}>
-                            {new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                          </span>
+                      <div key={msg.id} className={`chat-bubble ${isMe ? "mine" : "theirs"}`}>
+                        {!isMe && (
+                          <div className="chat-bubble-sender">
+                            {msg.sender_name}
+                            {msg.sender_headline ? ` • ${msg.sender_headline}` : ""}
+                          </div>
+                        )}
+                        <div>{msg.content}</div>
+                        <div className="chat-bubble-time">
+                          {new Date(msg.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
                         </div>
                       </div>
                     );
@@ -226,48 +470,29 @@ export default function Messages() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Message composer input */}
-              <form onSubmit={handleSendMessage} style={{ padding: "12px 16px", borderTop: "1px solid var(--border-color, #2a2f3d)", display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    type="text"
-                    value={messageText}
-                    onChange={(e) => setMessageText(e.target.value)}
-                    placeholder="Write a message..."
-                    style={{ flex: 1, padding: "10px 14px", borderRadius: 8 }}
-                    autoFocus
-                  />
-                  <button type="submit" className="btn btn-primary" disabled={sending || !messageText.trim()}>
-                    {sending ? "Sending…" : "Send"}
-                  </button>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: "0.78rem" }}>
-                  <span className="muted">Type:</span>
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="msgType"
-                      checked={messageType === "private"}
-                      onChange={() => setMessageType("private")}
-                    />
-                    Private Message
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer" }}>
-                    <input
-                      type="radio"
-                      name="msgType"
-                      checked={messageType === "public"}
-                      onChange={() => setMessageType("public")}
-                    />
-                    Public Note
-                  </label>
-                </div>
+              {/* Group Composer */}
+              <form onSubmit={handleSendCommunity} className="messages-composer-bar">
+                <input
+                  type="text"
+                  className="input"
+                  placeholder={`Post to #${activeCommunity?.name || "community"}...`}
+                  value={communityText}
+                  onChange={(e) => setCommunityText(e.target.value)}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  type="submit"
+                  className="btn btn-primary btn-sm"
+                  disabled={sending || !communityText.trim()}
+                >
+                  {sending ? "Posting..." : "Post Message"}
+                </button>
               </form>
             </>
           ) : (
-            <div style={{ margin: "auto", textAlign: "center", padding: 40, color: "var(--text-muted, #8b949e)" }}>
-              <h3>Select a conversation</h3>
-              <p>Choose an ongoing thread from the left or connect with users in your network.</p>
+            <div style={{ margin: "auto", textAlign: "center", padding: 40 }} className="muted">
+              <h4>No group or community selected</h4>
+              <p className="text-sm">Select an open-source group or community from the left list.</p>
             </div>
           )}
         </div>

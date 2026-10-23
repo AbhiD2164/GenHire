@@ -11,6 +11,7 @@ class CustomUser(AbstractUser):
     email = models.EmailField(unique=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="applicant")
     email_verified = models.BooleanField(default=False)
+    phone_number = models.CharField(max_length=30, blank=True)
 
     # Verification fields
     company_name = models.CharField(max_length=255, blank=True)
@@ -48,6 +49,7 @@ class Profile(models.Model):
     user = models.OneToOneField(CustomUser, on_delete=models.CASCADE, related_name="profile")
 
     headline = models.CharField(max_length=255, blank=True, help_text="e.g. 'Senior Marketing Manager' or 'Civil Engineer'")
+    industry = models.CharField(max_length=100, blank=True, help_text="Industry/Domain")
     bio = models.TextField(blank=True)
     location = models.CharField(max_length=255, blank=True, help_text="City, State/Country")
     avatar = models.ImageField(upload_to="avatars/", null=True, blank=True)

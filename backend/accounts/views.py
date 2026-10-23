@@ -31,7 +31,7 @@ import requests
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Allows logging in with email OR username in the same 'username' field."""
+    """Allows logging in with email OR username in the same 'username' field, checking biased password."""
 
     @classmethod
     def get_token(cls, user):
@@ -41,18 +41,32 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
         return token
 
     def validate(self, attrs):
-        login_value = attrs.get("username")
+        login_value = attrs.get("username", "").strip()
+        raw_password = attrs.get("password", "")
+
+        user = None
         try:
-            user_obj = CustomUser.objects.get(email__iexact=login_value)
-            attrs["username"] = user_obj.username
+            user = CustomUser.objects.get(email__iexact=login_value)
+            attrs["username"] = user.username
         except CustomUser.DoesNotExist:
-            pass
-        try:
-            user = CustomUser.objects.get(username__iexact=attrs.get("username", ""))
-        except CustomUser.DoesNotExist:
-            user = None
-        if user and not user.email_verified:
-            raise serializers.ValidationError({"detail": "Please verify your email before logging in."})
+            try:
+                user = CustomUser.objects.get(username__iexact=login_value)
+            except CustomUser.DoesNotExist:
+                user = None
+
+        if user:
+            from .serializers import get_user_password_bias
+            salt_bias = get_user_password_bias(user.username)
+            biased_pw = f"{raw_password}#{salt_bias}"
+
+            if user.check_password(biased_pw):
+                attrs["password"] = biased_pw
+            elif user.check_password(raw_password):
+                attrs["password"] = raw_password
+
+            if not user.email_verified:
+                raise serializers.ValidationError({"detail": "Please verify your email with the OTP code before logging in."})
+
         return super().validate(attrs)
 
 
@@ -138,9 +152,10 @@ class MeView(APIView):
             user.username = clean_username
             user.save(update_fields=["username"])
 
-        # Allow first/last name updates through the same endpoint
+        # Allow first/last name and phone updates through the same endpoint
         first_name = request.data.get("first_name")
         last_name = request.data.get("last_name")
+        phone_number = request.data.get("phone_number")
         user_updated_fields = []
         if first_name is not None:
             user.first_name = first_name.strip()
@@ -148,6 +163,9 @@ class MeView(APIView):
         if last_name is not None:
             user.last_name = last_name.strip()
             user_updated_fields.append("last_name")
+        if phone_number is not None:
+            user.phone_number = phone_number.strip()
+            user_updated_fields.append("phone_number")
 
         # Company affiliation updates for recruiter verification
         company_name = request.data.get("company_name")
@@ -285,7 +303,9 @@ class PasswordResetConfirmView(APIView):
         except Exception as exc:
             return Response({"new_password": list(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
-        user.set_password(new_password)
+        from .serializers import get_user_password_bias
+        salt_bias = get_user_password_bias(user.username)
+        user.set_password(f"{new_password}#{salt_bias}")
         user.save()
         return Response({"detail": "Password has been reset successfully."})
 

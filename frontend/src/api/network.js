@@ -46,6 +46,12 @@ export async function myConnections() {
   return res.data;
 }
 
+export async function getSuggestedPeople() {
+  const res = await client.get("/network/connections/suggestions/");
+  return res.data;
+}
+
+// Personal direct 1-on-1 messages
 export async function getConversations() {
   const res = await client.get("/network/messages/conversations/");
   return res.data;
@@ -56,15 +62,43 @@ export async function getConversationMessages(partnerId) {
   return res.data;
 }
 
-export async function sendMessage(partnerId, { content, message_type = "private" }) {
-  const res = await client.post(`/network/messages/${partnerId}/`, {
-    content,
-    message_type,
-  });
+export async function sendMessage(partnerId, { content }) {
+  const res = await client.post(`/network/messages/${partnerId}/`, { content });
   return res.data;
 }
 
 export async function getUnreadMessageCount() {
   const res = await client.get("/network/messages/unread-count/");
+  return res.data;
+}
+
+// Communities & Groups
+export async function getCommunities(params) {
+  const res = await client.get("/network/communities/", { params });
+  return res.data;
+}
+
+export async function createCommunity(payload) {
+  const res = await client.post("/network/communities/", payload);
+  return res.data;
+}
+
+export async function getCommunity(id) {
+  const res = await client.get(`/network/communities/${id}/`);
+  return res.data;
+}
+
+export async function toggleCommunityMembership(communityId) {
+  const res = await client.post(`/network/communities/${communityId}/toggle-membership/`);
+  return res.data;
+}
+
+export async function getCommunityMessages(communityId) {
+  const res = await client.get(`/network/communities/${communityId}/messages/`);
+  return res.data;
+}
+
+export async function sendCommunityMessage(communityId, content) {
+  const res = await client.post(`/network/communities/${communityId}/messages/`, { content });
   return res.data;
 }
