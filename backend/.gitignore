@@ -7,3 +7,7 @@ db.sqlite3
 media/
 staticfiles/
 *.sqlite3
+
+config/firebase-service-account.json
+*.json
+!config/firebase-service-account.example.json

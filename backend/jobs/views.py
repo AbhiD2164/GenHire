@@ -132,7 +132,7 @@ class ApplyToJobView(APIView):
 
 class MyApplicationsView(generics.ListAPIView):
     """
-    Candidate's own application history with real-time status and scoring.
+    User's own application history with real-time status and scoring.
     Supports filtering by status: 'applied', 'selected', 'rejected'.
     """
     serializer_class = ApplicationCandidateView
@@ -144,6 +144,41 @@ class MyApplicationsView(generics.ListAPIView):
         if status_filter in ("applied", "selected", "rejected"):
             qs = qs.filter(status=status_filter)
         return qs.order_by("-created_at")
+
+
+class ApplicationStatsView(APIView):
+    """
+    Returns a breakdown of the current user's application statistics:
+    - total submitted
+    - auto-rejected by system (skills mismatch / format failure)
+    - rejected by recruiter (human decision)
+    - selected / shortlisted
+    - currently in review
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        qs = Application.objects.filter(applicant=request.user)
+        total = qs.count()
+        auto_rejected = qs.filter(
+            status="rejected",
+            rejection_stage="rejected_by_system"
+        ).count()
+        recruiter_rejected = qs.filter(
+            status="rejected",
+            rejection_stage="rejected_by_recruiter"
+        ).count()
+        selected = qs.filter(status="selected").count()
+        in_review = qs.filter(status__in=["applied", "consider"]).count()
+
+        return Response({
+            "total": total,
+            "in_review": in_review,
+            "selected": selected,
+            "rejected_total": auto_rejected + recruiter_rejected,
+            "auto_rejected_by_system": auto_rejected,
+            "rejected_by_recruiter": recruiter_rejected,
+        })
 
 
 class JobApplicationsView(generics.ListAPIView):

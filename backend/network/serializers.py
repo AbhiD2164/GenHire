@@ -34,12 +34,16 @@ class PostSerializer(serializers.ModelSerializer):
     comments = CommentSerializer(many=True, read_only=True)
     related_job_title = serializers.CharField(source="related_job.title", read_only=True, default=None)
     community_name = serializers.CharField(source="community.name", read_only=True, default=None)
+    community_type = serializers.CharField(source="community.community_type", read_only=True, default=None)
+    community_joined_by_me = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
         fields = [
             "id", "author", "author_name", "author_role", "author_headline", "author_avatar",
-            "content", "hashtags", "community", "community_name", "image", "related_job", "related_job_title",
+            "content", "hashtags", "community", "community_name", "community_type",
+            "community_joined_by_me",
+            "image", "related_job", "related_job_title",
             "created_at", "updated_at", "like_count", "comment_count", "liked_by_me", "comments",
         ]
         read_only_fields = ["author", "created_at", "updated_at", "hashtags"]
@@ -72,6 +76,15 @@ class PostSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.likes.filter(user=request.user).exists()
+
+    def get_community_joined_by_me(self, obj):
+        """Returns True if the post belongs to a community the current user has joined."""
+        if not obj.community_id:
+            return None  # Not a community post — no join prompt needed
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return False
+        return obj.community.members.filter(id=request.user.id).exists()
 
 
 class ConnectionSerializer(serializers.ModelSerializer):

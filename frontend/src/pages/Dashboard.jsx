@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { myApplications, recruiterDashboard, getRuntimeSuggestions } from "../api/jobs";
+import { myApplications, recruiterDashboard, getRuntimeSuggestions, getApplicationStats } from "../api/jobs";
 import { myConnections } from "../api/network";
 
 export default function Dashboard() {
@@ -11,21 +11,24 @@ export default function Dashboard() {
   const [postedJobs, setPostedJobs] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
   const [connectionCount, setConnectionCount] = useState(0);
+  const [appStats, setAppStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchDashboardData = useCallback(async () => {
     setLoading(true);
     try {
-      const [appsData, postedData, suggData, connData] = await Promise.all([
+      const [appsData, postedData, suggData, connData, statsData] = await Promise.all([
         myApplications().catch(() => ({ results: [] })),
         recruiterDashboard().catch(() => []),
         getRuntimeSuggestions().catch(() => ({ suggestions: [] })),
         myConnections().catch(() => ({ connections: [] })),
+        getApplicationStats().catch(() => null),
       ]);
       setApplications(appsData.results || appsData || []);
       setPostedJobs(postedData || []);
       setSuggestions(suggData.suggestions || []);
       setConnectionCount(connData.connections?.length || 0);
+      setAppStats(statsData);
     } finally {
       setLoading(false);
     }
@@ -134,18 +137,18 @@ export default function Dashboard() {
       <section className="dashboard-stats-grid">
         <div className="stat-metric-card">
           <span className="text-xs muted font-semibold">APPLICATIONS SUBMITTED</span>
-          <div className="stat-metric-num">{applications.length}</div>
+          <div className="stat-metric-num">{appStats ? appStats.total : applications.length}</div>
           <span className="text-xs muted" style={{ marginTop: 2, display: "block" }}>
-            {appliedList.length} currently in active review
+            {appStats ? appStats.in_review : appliedList.length} currently in active review
           </span>
         </div>
         <div className="stat-metric-card">
           <span className="text-xs muted font-semibold">SELECTED / MATCHES</span>
           <div className="stat-metric-num" style={{ color: "#16A34A" }}>
-            {selectedList.length}
+            {appStats ? appStats.selected : selectedList.length}
           </div>
           <span className="text-xs muted" style={{ marginTop: 2, display: "block" }}>
-            ATS high match score (80%+)
+            Shortlisted & top matches
           </span>
         </div>
         <div className="stat-metric-card">
@@ -165,6 +168,70 @@ export default function Dashboard() {
           </Link>
         </div>
       </section>
+
+      {/* Application Rejection Breakdown — shown only when stats are loaded */}
+      {appStats && appStats.rejected_total > 0 && (
+        <section style={{ marginBottom: 20 }}>
+          <div className="card" style={{ padding: "14px 20px" }}>
+            <h4 style={{ margin: "0 0 12px", fontSize: 14, fontWeight: 700 }}>
+              Application Status Overview
+            </h4>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  flex: 1, minWidth: 160, padding: "10px 14px",
+                  background: "#FEF9C3", border: "1px solid #FDE047",
+                  borderRadius: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#854D0E", marginBottom: 4 }}>
+                  CRITERIA MISMATCH (AUTO)
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#92400E" }}>
+                  {appStats.auto_rejected_by_system}
+                </div>
+                <div style={{ fontSize: 11, color: "#78350F", marginTop: 2 }}>
+                  Skills or formatting did not meet minimum criteria
+                </div>
+              </div>
+              <div
+                style={{
+                  flex: 1, minWidth: 160, padding: "10px 14px",
+                  background: "#FEF2F2", border: "1px solid #FECACA",
+                  borderRadius: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", marginBottom: 4 }}>
+                  NOT SELECTED BY EMPLOYER
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#DC2626" }}>
+                  {appStats.rejected_by_recruiter}
+                </div>
+                <div style={{ fontSize: 11, color: "#7F1D1D", marginTop: 2 }}>
+                  Hiring team prioritized other qualifications
+                </div>
+              </div>
+              <div
+                style={{
+                  flex: 1, minWidth: 160, padding: "10px 14px",
+                  background: "#F0FDF4", border: "1px solid #BBF7D0",
+                  borderRadius: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 700, color: "#166534", marginBottom: 4 }}>
+                  SHORTLISTED & INTERVIEWING
+                </div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#16A34A" }}>
+                  {appStats.selected}
+                </div>
+                <div style={{ fontSize: 11, color: "#14532D", marginTop: 2 }}>
+                  Applications advancing in recruitment process
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Main 2-Column Dashboard Layout */}
       <div className="dashboard-main-grid">
@@ -342,8 +409,8 @@ export default function Dashboard() {
                               color: "#166534",
                             }}
                           >
-                            <strong>✓ Selected: </strong>
-                            <span>{app.candidate_message || "Candidate application meets or exceeds qualification threshold (80-100%). Result sent via email."}</span>
+                            <strong>✓ Shortlisted: </strong>
+                            <span>{app.candidate_message || "Your profile matches the role requirements and has been forwarded for the next stage."}</span>
                           </div>
                         )}
 
@@ -360,10 +427,10 @@ export default function Dashboard() {
                           >
                             <strong>
                               {app.rejection_stage === "rejected_by_system"
-                                ? "⚠ Application rejected by system: "
-                                : "Application rejected by hiring team: "}
+                                ? "Application Update: "
+                                : "Hiring Team Decision: "}
                             </strong>
-                            <span>{app.rejection_reason || app.feedback || "Did not satisfy matching criteria or format standard."}</span>
+                            <span>{app.rejection_reason || app.feedback || "Thank you for applying. We are moving forward with other applicants for this opening."}</span>
                           </div>
                         )}
 
@@ -378,9 +445,9 @@ export default function Dashboard() {
                               color: "#1E40AF",
                             }}
                           >
-                            <strong>In Review: </strong>
+                            <strong>Application in Review: </strong>
                             <span>
-                              {app.candidate_message || "Partial match (60-70%). Resume forwarded for review."}
+                              {app.candidate_message || "Your application has been received and is currently being evaluated by the hiring team."}
                             </span>
                           </div>
                         )}
@@ -388,7 +455,7 @@ export default function Dashboard() {
 
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10 }} className="text-xs muted">
                         <span>Submitted: {new Date(app.created_at).toLocaleDateString()}</span>
-                        <span>Zero-delay email dispatch verified</span>
+                        <span>Confirmation email dispatched</span>
                       </div>
                     </div>
                   );
@@ -398,23 +465,23 @@ export default function Dashboard() {
           </div>
         </main>
 
-        {/* Right Column: Runtime Recommendations & Profile Advice */}
+        {/* Right Column: Recommendations & Profile Advice */}
         <aside style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* RabbitMQ Runtime Intelligence Card */}
+          {/* Personalized Job Matches */}
           <div className="card">
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-              <h4 style={{ margin: 0, fontSize: 14 }}>Runtime Recommendations</h4>
+              <h4 style={{ margin: 0, fontSize: 14 }}>Recommended for You</h4>
               <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1", fontSize: 10 }}>
-                RabbitMQ Sync
+                Smart Match
               </span>
             </div>
             <p className="text-xs muted" style={{ margin: "0 0 12px" }}>
-              Dynamic match suggestions calculated at runtime from your resume analysis and applied profile history:
+              Roles aligned with your industry experience, skills, and application preferences:
             </p>
 
             {suggestions.length === 0 ? (
               <p className="text-xs muted">
-                Apply to roles or scan your resume to activate runtime cache recommendations.
+                Apply to roles or complete your profile skills to unlock curated career recommendations.
               </p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

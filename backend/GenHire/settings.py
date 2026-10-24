@@ -3,9 +3,19 @@ from datetime import timedelta
 import os
 import dj_database_url
 
+# ── Load .env file so local development works without manual env vars ──────
+try:
+    from dotenv import load_dotenv
+    # Walk up to find the backend .env (same directory as manage.py)
+    _env_path = Path(__file__).resolve().parent.parent / ".env"
+    if _env_path.exists():
+        load_dotenv(_env_path, override=False)  # don't override already-set system env vars
+except ImportError:
+    pass  # dotenv not installed in prod – env vars must be set by the host
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-secret-key-change-in-production")
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "genhire-app-secret")
 # Local clones default to development; Render sets this explicitly to False.
 DEBUG = os.environ.get("DJANGO_DEBUG", "True") == "True"
 if not DEBUG and SECRET_KEY == "dev-secret-key-change-in-production":

@@ -40,6 +40,11 @@ export async function myApplications(status) {
   return res.data;
 }
 
+export async function getApplicationStats() {
+  const res = await client.get("/jobs/my-applications/stats/");
+  return res.data;
+}
+
 export async function jobApplications(jobId, statusFilter) {
   const res = await client.get(`/jobs/${jobId}/applications/`, {
     params: statusFilter ? { status: statusFilter } : {},

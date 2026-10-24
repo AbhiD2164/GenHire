@@ -16,10 +16,10 @@ from .serializers import (
 )
 from .verification import verify_recruiter_profile
 from .firebase_service import (
+    verify_firebase_token,
     send_firebase_email_verification,
     send_firebase_password_reset,
 )
-import os
 from django.core.mail import send_mail
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
@@ -27,7 +27,6 @@ from django.utils.encoding import force_bytes, force_str
 from django.utils import timezone
 from django.conf import settings
 from rest_framework_simplejwt.tokens import RefreshToken
-import requests
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -306,6 +305,11 @@ class PasswordResetConfirmView(APIView):
 
 
 class GoogleOAuthView(APIView):
+    """
+    Legacy endpoint kept for backward compatibility.
+    Accepts a Google/Firebase ID token and returns GenHire JWT pair.
+    Now delegates to the same verification logic as FirebaseLoginView.
+    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -313,23 +317,16 @@ class GoogleOAuthView(APIView):
         if not id_token:
             return Response({"detail": "id_token required."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Verify token with Google
-        resp = requests.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": id_token})
-        if resp.status_code != 200:
-            return Response({"detail": "Invalid Google token."}, status=status.HTTP_400_BAD_REQUEST)
+        token_info = verify_firebase_token(id_token)
+        if not token_info:
+            return Response({"detail": "Invalid or expired Google/Firebase token."}, status=status.HTTP_400_BAD_REQUEST)
 
-        info = resp.json()
-        email = info.get("email")
-        email_verified = info.get("email_verified") in ("true", True, "True")
-        name = info.get("name") or ""
-
-        if settings.GOOGLE_CLIENT_ID:
-            audience = info.get("aud") or info.get("azp")
-            if audience != settings.GOOGLE_CLIENT_ID:
-                return Response({"detail": "Invalid Google token audience."}, status=status.HTTP_400_BAD_REQUEST)
+        email = token_info.get("email", "")
+        email_verified = token_info.get("email_verified", False)
+        display_name = token_info.get("name", "")
 
         if not email or not email_verified:
-            return Response({"detail": "Google account email not verified."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Google account email is not verified."}, status=status.HTTP_400_BAD_REQUEST)
 
         requested_role = request.data.get("role", "applicant")
         if requested_role not in {"applicant", "recruiter"}:
@@ -338,7 +335,7 @@ class GoogleOAuthView(APIView):
         try:
             user = CustomUser.objects.get(email__iexact=email)
         except CustomUser.DoesNotExist:
-            username = email.split("@")[0]
+            username = email.split("@")[0].replace(".", "_")
             if CustomUser.objects.filter(username=username).exists():
                 username = f"{username}_{secrets.token_hex(3)}"
             user = CustomUser.objects.create(
@@ -346,86 +343,10 @@ class GoogleOAuthView(APIView):
                 email=email,
                 role=requested_role,
                 email_verified=True,
-            )
-
-        refresh = RefreshToken.for_user(user)
-        return Response({"access": str(refresh.access_token), "refresh": str(refresh)})
-
-
-class FirebaseLoginView(APIView):
-    """
-    Exchanges a Firebase Auth ID Token for GenHire 7-day JWT tokens.
-    Handles user creation or sync using Firebase verified email.
-    """
-    permission_classes = [permissions.AllowAny]
-
-    def post(self, request):
-        id_token = request.data.get("id_token")
-        requested_role = request.data.get("role", "applicant")
-        company_name = request.data.get("company_name", "")
-        company_website = request.data.get("company_website", "")
-
-        if not id_token:
-            return Response({"detail": "Firebase id_token is required."}, status=status.HTTP_400_BAD_REQUEST)
-
-        email = None
-        email_verified = False
-        display_name = ""
-
-        # Attempt verification via firebase_admin
-        try:
-            import firebase_admin.auth
-            decoded = firebase_admin.auth.verify_id_token(id_token)
-            email = decoded.get("email")
-            email_verified = decoded.get("email_verified", False)
-            display_name = decoded.get("name", "")
-        except Exception:
-            # Fallback to Google / Firebase tokeninfo endpoint
-            try:
-                resp = requests.get("https://oauth2.googleapis.com/tokeninfo", params={"id_token": id_token})
-                if resp.status_code == 200:
-                    info = resp.json()
-                    email = info.get("email")
-                    email_verified = info.get("email_verified") in ("true", True, "True")
-                    display_name = info.get("name", "")
-            except Exception:
-                pass
-
-        if not email:
-            return Response({"detail": "Unable to verify Firebase token or extract email."}, status=status.HTTP_400_BAD_REQUEST)
-
-        if requested_role not in {"applicant", "recruiter"}:
-            requested_role = "applicant"
-
-        try:
-            user = CustomUser.objects.get(email__iexact=email)
-            if email_verified and not user.email_verified:
-                user.email_verified = True
-                user.save(update_fields=["email_verified"])
-        except CustomUser.DoesNotExist:
-            username = email.split("@")[0].replace(".", "_")
-            if CustomUser.objects.filter(username=username).exists():
-                username = f"{username}_{secrets.token_hex(3)}"
-
-            is_recruiter_verified = False
-            recruiter_notes = ""
-            if requested_role == "recruiter":
-                is_recruiter_verified, recruiter_notes = verify_recruiter_profile(email, company_name, company_website)
-
-            user = CustomUser.objects.create(
-                username=username,
-                email=email,
-                role=requested_role,
-                email_verified=email_verified,
                 first_name=display_name.split()[0] if display_name else "",
                 last_name=" ".join(display_name.split()[1:]) if display_name and len(display_name.split()) > 1 else "",
-                company_name=company_name if requested_role == "recruiter" else "",
-                company_website=company_website if requested_role == "recruiter" else "",
-                is_recruiter_verified=is_recruiter_verified,
-                recruiter_verification_notes=recruiter_notes,
-                is_candidate_verified=True if requested_role == "applicant" else False,
             )
-            Profile.objects.create(user=user, company_name=company_name if requested_role == "recruiter" else "")
+            Profile.objects.get_or_create(user=user)
 
         refresh = RefreshToken.for_user(user)
         return Response({
@@ -436,7 +357,130 @@ class FirebaseLoginView(APIView):
                 "username": user.username,
                 "email": user.email,
                 "role": user.role,
-                "is_recruiter_verified": user.is_recruiter_verified,
-                "is_candidate_verified": user.is_candidate_verified,
-            }
+            },
         })
+
+
+class FirebaseLoginView(APIView):
+    """
+    Primary Google / Firebase sign-in endpoint.
+
+    Accepts a Firebase Auth ID Token (obtained from Firebase client SDK after
+    Google sign-in or email/password sign-in) and returns GenHire JWT access +
+    refresh tokens.
+
+    Flow:
+      1. Verify the Firebase ID token using firebase_admin SDK (preferred) or
+         Google's tokeninfo fallback.
+      2. Extract email + email_verified + display name.
+      3. Find or create the GenHire CustomUser for that email.
+      4. Issue 7-day access token + 30-day refresh token.
+
+    Error codes:
+      400 — missing id_token, unverified email, or unverifiable token
+      500 — unexpected server error (logged)
+    """
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        id_token = request.data.get("id_token")
+        if not id_token:
+            return Response(
+                {"detail": "Firebase id_token is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ── Verify the token ──────────────────────────────────────────────────
+        token_info = verify_firebase_token(id_token)
+
+        if not token_info:
+            return Response(
+                {
+                    "detail": (
+                        "Unable to verify Firebase token. "
+                        "Please ensure you are using a valid Firebase project and try again."
+                    )
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        email = token_info.get("email", "").strip()
+        email_verified = token_info.get("email_verified", False)
+        display_name = token_info.get("name", "").strip()
+
+        if not email:
+            return Response(
+                {"detail": "No email address found in the Google account token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not email_verified:
+            return Response(
+                {"detail": "Your Google account email is not verified. Please verify it with Google first."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ── Optional: recruiter registration params ───────────────────────────
+        requested_role = request.data.get("role", "applicant")
+        if requested_role not in {"applicant", "recruiter"}:
+            requested_role = "applicant"
+        company_name = (request.data.get("company_name") or "").strip()
+        company_website = (request.data.get("company_website") or "").strip()
+
+        # ── Find or create the GenHire user ───────────────────────────────────
+        try:
+            user = CustomUser.objects.get(email__iexact=email)
+            # Sync email_verified flag in case it changed
+            if email_verified and not user.email_verified:
+                user.email_verified = True
+                user.save(update_fields=["email_verified"])
+
+        except CustomUser.DoesNotExist:
+            # Derive a unique username from the email prefix
+            base_username = email.split("@")[0].replace(".", "_")
+            username = base_username
+            if CustomUser.objects.filter(username__iexact=username).exists():
+                username = f"{base_username}_{secrets.token_hex(3)}"
+
+            is_recruiter_verified = False
+            recruiter_notes = ""
+            if requested_role == "recruiter" and company_name:
+                is_recruiter_verified, recruiter_notes = verify_recruiter_profile(
+                    email, company_name, company_website
+                )
+
+            name_parts = display_name.split()
+            user = CustomUser.objects.create(
+                username=username,
+                email=email,
+                role=requested_role,
+                email_verified=True,  # Google guarantees this
+                first_name=name_parts[0] if name_parts else "",
+                last_name=" ".join(name_parts[1:]) if len(name_parts) > 1 else "",
+                company_name=company_name if requested_role == "recruiter" else "",
+                company_website=company_website if requested_role == "recruiter" else "",
+                is_recruiter_verified=is_recruiter_verified,
+                recruiter_verification_notes=recruiter_notes,
+                is_candidate_verified=(requested_role == "applicant"),
+            )
+            Profile.objects.get_or_create(
+                user=user,
+                defaults={"company_name": company_name if requested_role == "recruiter" else ""},
+            )
+
+        # ── Issue GenHire JWT pair ────────────────────────────────────────────
+        refresh = RefreshToken.for_user(user)
+        return Response(
+            {
+                "access": str(refresh.access_token),
+                "refresh": str(refresh),
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "email": user.email,
+                    "role": user.role,
+                    "is_recruiter_verified": user.is_recruiter_verified,
+                    "is_candidate_verified": user.is_candidate_verified,
+                },
+            }
+        )

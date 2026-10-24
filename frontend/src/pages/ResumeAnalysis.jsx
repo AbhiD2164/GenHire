@@ -36,10 +36,10 @@ export default function ResumeAnalysis() {
   return (
     <div className="page container" style={{ paddingTop: 20 }}>
       <div style={{ marginBottom: 20 }}>
-        <span className="eyebrow" style={{ margin: 0 }}>Intelligent Multi-Industry ATS</span>
-        <h1 style={{ margin: "4px 0 0", fontSize: 24, fontWeight: 800 }}>Resume Scanner & Analysis</h1>
+        <span className="eyebrow" style={{ margin: 0 }}>Career Fit & ATS Optimization</span>
+        <h1 style={{ margin: "4px 0 0", fontSize: 24, fontWeight: 800 }}>Resume Review & Role Match</h1>
         <p className="muted text-sm" style={{ margin: "4px 0 0" }}>
-          Evaluates resumes across Healthcare, Finance, Engineering, Sales, HR, Legal, and Tech with automated anti-phishing format verification.
+          Benchmark your resume across industry roles, verify formatting readability, and optimize keyword match.
         </p>
       </div>
 
@@ -57,7 +57,7 @@ export default function ResumeAnalysis() {
                   style={{ padding: "8px 0" }}
                 />
                 <span className="text-xs muted" style={{ display: "block", marginTop: 4 }}>
-                  Strict formatting enforced: Only .PDF and .DOCX files accepted. Phishing URLs and malformed layouts are automatically rejected.
+                  Standard formats accepted: PDF (.pdf) and Microsoft Word (.docx, .doc).
                 </span>
               </div>
 
@@ -214,23 +214,23 @@ export default function ResumeAnalysis() {
         {/* Right Column: ATS Guidance & Tips */}
         <aside style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="card" style={{ padding: 18 }}>
-            <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>ATS Screening Standards</h4>
+            <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>Profile Evaluation Tiers</h4>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, lineHeight: 1.6, color: "var(--slate)" }}>
-              <li><strong>Score 80–100%:</strong> Immediate candidate selection and recruiter notification.</li>
-              <li><strong>Score 60–79%:</strong> Partial match; forwarded for manual recruiter consideration.</li>
-              <li><strong>Score &lt; 60%:</strong> Instant rejection with transparent feedback email.</li>
+              <li><strong>Strong Match (80–100%):</strong> Highly qualified fit for immediate interview consideration.</li>
+              <li><strong>Potential Fit (60–79%):</strong> Relevant core skills; recommended for hiring manager review.</li>
+              <li><strong>Needs Alignment (&lt; 60%):</strong> Key requirements missing; actionable recommendations provided.</li>
             </ul>
           </div>
 
           <div className="card" style={{ padding: 18 }}>
-            <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>Format & Security Integrity</h4>
+            <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>Document Guidelines</h4>
             <p className="text-xs muted" style={{ margin: "0 0 8px", lineHeight: 1.5 }}>
-              GenHire strictly scans for security threats and malformed formatting:
+              Standard resume guidelines ensure accurate reading across applicant tracking systems:
             </p>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, color: "var(--slate)" }}>
-              <div>✓ Word (.doc, .docx) and PDF (.pdf) only</div>
-              <div>✓ Malicious & phishing URLs blocked</div>
-              <div>✓ Clean plaintext structure required</div>
+              <div>✓ Formats: Word (.doc, .docx) and PDF (.pdf)</div>
+              <div>✓ Standard headings (Experience, Education, Skills)</div>
+              <div>✓ Valid external portfolio or project links</div>
             </div>
           </div>
         </aside>

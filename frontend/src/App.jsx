@@ -38,21 +38,20 @@ export default function App() {
             <Route path="/verify-email" element={<EmailVerification />} />
             <Route path="/" element={<Landing />} />
 
-            {/* Protected – any authenticated user */}
+            {/* Protected – unified access for all members */}
             <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
             <Route path="/jobs" element={<ProtectedRoute><JobList /></ProtectedRoute>} />
             <Route path="/jobs/:id" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
+            <Route path="/jobs/new" element={<ProtectedRoute><CreateJob /></ProtectedRoute>} />
+            <Route path="/jobs/:id/applications" element={<ProtectedRoute><JobApplications /></ProtectedRoute>} />
+            <Route path="/candidates" element={<ProtectedRoute><CandidateSearch /></ProtectedRoute>} />
             <Route path="/resume-analysis" element={<ProtectedRoute><ResumeAnalysis /></ProtectedRoute>} />
             <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
             <Route path="/profile/:userId" element={<ProtectedRoute><PublicProfile /></ProtectedRoute>} />
             <Route path="/network" element={<ProtectedRoute><Network /></ProtectedRoute>} />
             <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-
-            {/* Protected – recruiter only */}
-            <Route path="/jobs/new" element={<ProtectedRoute roleRequired="recruiter"><CreateJob /></ProtectedRoute>} />
-            <Route path="/jobs/:id/applications" element={<ProtectedRoute roleRequired="recruiter"><JobApplications /></ProtectedRoute>} />
-            <Route path="/candidates" element={<ProtectedRoute roleRequired="recruiter"><CandidateSearch /></ProtectedRoute>} />
+            <Route path="/message" element={<Navigate to="/messages" replace />} />
 
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/feed" replace />} />

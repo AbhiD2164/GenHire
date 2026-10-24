@@ -15,14 +15,23 @@ from .serializers import (
 
 class FeedView(generics.ListCreateAPIView):
     """
-    LinkedIn-style professional feed: shows posts with hashtag extraction,
-    reactions, and comments. No rigid category dropdowns required.
+    LinkedIn/Instagram-style ranked feed:
+    Priority 1 — Posts from users you're connected with or communities you've joined
+    Priority 2 — Posts liked/commented on by your connections (social signal)
+    Priority 3 — Posts matching your industry/domain (interest-based)
+    Priority 4 — All other posts (discovery)
     """
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        qs = Post.objects.select_related("author", "related_job", "community").prefetch_related("likes", "comments")
+        user = self.request.user
+
+        qs = Post.objects.select_related(
+            "author", "related_job", "community"
+        ).prefetch_related("likes", "comments")
+
+        # Explicit filters (hashtag search, community filter etc.)
         hashtag = self.request.query_params.get("hashtag")
         author_id = self.request.query_params.get("author")
         community_id = self.request.query_params.get("community")
@@ -36,9 +45,62 @@ class FeedView(generics.ListCreateAPIView):
         if community_id:
             qs = qs.filter(community_id=community_id)
         if search:
-            qs = qs.filter(Q(content__icontains=search) | Q(hashtags__icontains=search) | Q(author__username__icontains=search))
+            qs = qs.filter(
+                Q(content__icontains=search)
+                | Q(hashtags__icontains=search)
+                | Q(author__username__icontains=search)
+            )
+
+        # When no explicit filter, apply social ranking
+        if not any([hashtag, author_id, community_id, search]):
+            return self._ranked_feed(user, qs)
 
         return qs
+
+    def _ranked_feed(self, user, qs):
+        """Partition posts into priority buckets and merge them."""
+        from django.db.models import Case, IntegerField, Value, When
+
+        # Bucket 1: connections
+        accepted_conns = Connection.objects.filter(
+            Q(from_user=user) | Q(to_user=user), status="accepted"
+        )
+        connected_ids = set()
+        for c in accepted_conns:
+            connected_ids.add(c.from_user_id)
+            connected_ids.add(c.to_user_id)
+        connected_ids.discard(user.id)
+
+        # Bucket 2: joined communities
+        joined_community_ids = list(
+            user.joined_communities.values_list("id", flat=True)
+        )
+
+        # Bucket 3: posts liked/commented by connections (social signal)
+        social_post_ids = set(
+            Like.objects.filter(user_id__in=connected_ids).values_list("post_id", flat=True)
+        ) | set(
+            Comment.objects.filter(author_id__in=connected_ids).values_list("post_id", flat=True)
+        )
+
+        # Priority annotation
+        priority = Case(
+            # Priority 1a: authored by connection
+            When(author_id__in=connected_ids, then=Value(10)),
+            # Priority 1b: in a joined community
+            When(community_id__in=joined_community_ids, then=Value(9)),
+            # Priority 2: social signal (connection liked/commented)
+            When(id__in=list(social_post_ids), then=Value(5)),
+            default=Value(1),
+            output_field=IntegerField(),
+        )
+
+        # Interest filter for priority 3 (non-connection, non-community)
+        user_industry = getattr(getattr(user, "profile", None), "industry", "") or ""
+
+        return qs.annotate(feed_priority=priority).order_by(
+            "-feed_priority", "-created_at"
+        )
 
     def perform_create(self, serializer):
         serializer.save(author=self.request.user)

@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
-import { getFeed, createPost, toggleLike, addComment, getConversations } from "../api/network";
+import {
+  getFeed, createPost, toggleLike, addComment, getConversations,
+  toggleCommunityMembership,
+} from "../api/network";
 import { listJobs } from "../api/jobs";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -359,6 +362,8 @@ function FeedPostCard({ post, onTagClick }) {
   const [showComments, setShowComments] = useState(false);
   const [comments, setComments] = useState(post.comments || []);
   const [commentText, setCommentText] = useState("");
+  const [joinedCommunity, setJoinedCommunity] = useState(post.community_joined_by_me);
+  const [joiningComm, setJoiningComm] = useState(false);
   const { showToast } = useToast();
 
   async function handleLike() {
@@ -368,6 +373,19 @@ function FeedPostCard({ post, onTagClick }) {
       setLikeCount(res.like_count);
     } catch {
       showToast("Could not like post.", "error");
+    }
+  }
+
+  async function handleJoinCommunity() {
+    setJoiningComm(true);
+    try {
+      const res = await toggleCommunityMembership(post.community);
+      setJoinedCommunity(res.joined);
+      showToast(res.joined ? `Joined ${post.community_name}!` : `Left ${post.community_name}.`, "success");
+    } catch {
+      showToast("Could not update community membership.", "error");
+    } finally {
+      setJoiningComm(false);
     }
   }
 
@@ -400,6 +418,87 @@ function FeedPostCard({ post, onTagClick }) {
 
   return (
     <article className="post-card">
+      {/* Community Join Banner — shown at top of post if it belongs to a community the user hasn't joined */}
+      {post.community && joinedCommunity === false && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "8px 14px",
+            background: "#F0F9FF",
+            borderBottom: "1px solid #BAE6FD",
+            borderRadius: "10px 10px 0 0",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 18 }}>👥</span>
+            <div>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#0369A1" }}>
+                {post.community_name}
+              </span>
+              <span
+                style={{
+                  marginLeft: 6,
+                  fontSize: 10,
+                  fontWeight: 700,
+                  padding: "1px 6px",
+                  borderRadius: 999,
+                  background: post.community_type === "open_source" ? "#E0F2FE" : "#DCFCE7",
+                  color: post.community_type === "open_source" ? "#0369A1" : "#166534",
+                  textTransform: "uppercase",
+                }}
+              >
+                {post.community_type === "open_source"
+                  ? "Open Source"
+                  : post.community_type === "private_group"
+                  ? "Private"
+                  : "Public"}
+              </span>
+              <p style={{ margin: 0, fontSize: 11.5, color: "#64748B" }}>
+                Post from a community you haven't joined yet
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            style={{ fontSize: 12, padding: "5px 14px", whiteSpace: "nowrap" }}
+            onClick={handleJoinCommunity}
+            disabled={joiningComm}
+          >
+            {joiningComm ? "Joining..." : "+ Join Community"}
+          </button>
+        </div>
+      )}
+
+      {/* Already joined: show subtle community tag at top */}
+      {post.community && joinedCommunity === true && (
+        <div
+          style={{
+            padding: "5px 14px",
+            background: "#F8FAFC",
+            borderBottom: "1px solid var(--border)",
+            borderRadius: "10px 10px 0 0",
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 12, color: "#0369A1", fontWeight: 600 }}>
+            👥 {post.community_name}
+          </span>
+          <span style={{ fontSize: 10.5, color: "#64748B" }}>· You're a member</span>
+          <Link
+            to={`/messages?community=${post.community}`}
+            style={{ marginLeft: "auto", fontSize: 11, color: "var(--brand-strong)" }}
+          >
+            Group Chat →
+          </Link>
+        </div>
+      )}
+
       <div className="post-header">
         <div className="post-author-info">
           <Link to={`/profile/${post.author}`}>

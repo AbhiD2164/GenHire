@@ -7,6 +7,7 @@ import {
   getCommunities,
   getCommunityMessages,
   sendCommunityMessage,
+  myConnections,
 } from "../api/network";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
@@ -17,7 +18,7 @@ export default function Messages() {
   const directPartnerId = searchParams.get("to");
   const directCommunityId = searchParams.get("community");
 
-  // Main Category Tab: 'personal' (1-on-1) or 'groups' (Communities & Open-Source)
+  // Category Tab: 'personal' (Direct Messages) or 'groups' (Communities & Groups)
   const [channelType, setChannelType] = useState(directCommunityId ? "groups" : "personal");
 
   // Personal Direct Chats state
@@ -26,6 +27,10 @@ export default function Messages() {
   const [activePartner, setActivePartner] = useState(null);
   const [personalMessages, setPersonalMessages] = useState([]);
   const [personalText, setPersonalText] = useState("");
+
+  // Connections list for starting new chats
+  const [connections, setConnections] = useState([]);
+  const [showComposeModal, setShowComposeModal] = useState(false);
 
   // Communities & Groups state
   const [communities, setCommunities] = useState([]);
@@ -48,24 +53,49 @@ export default function Messages() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [personalMessages, communityMessages]);
 
-  // Load threads when channelType changes
+  // Load threads and connections
   useEffect(() => {
     async function loadThreads() {
       setLoadingThreads(true);
       try {
+        const [convData, commData, connData] = await Promise.all([
+          getConversations().catch(() => []),
+          getCommunities().catch(() => []),
+          myConnections().catch(() => ({ connections: [] })),
+        ]);
+
+        setConversations(convData || []);
+        setCommunities(commData || []);
+        setConnections(connData?.connections || []);
+
         if (channelType === "personal") {
-          const data = await getConversations();
-          setConversations(data || []);
-          if (!selectedPartnerId && data && data.length > 0) {
-            setSelectedPartnerId(data[0].partner_id);
-            setActivePartner(data[0]);
-          } else if (selectedPartnerId && data) {
-            const found = data.find((c) => c.partner_id === selectedPartnerId);
+          if (directPartnerId) {
+            const partnerIdInt = parseInt(directPartnerId);
+            setSelectedPartnerId(partnerIdInt);
+            const found = (convData || []).find((c) => c.partner_id === partnerIdInt);
+            if (found) {
+              setActivePartner(found);
+            } else {
+              // Check in connections
+              const connFound = (connData?.connections || []).find(
+                (c) => c.from_user === partnerIdInt || c.to_user === partnerIdInt
+              );
+              if (connFound) {
+                const partnerName = connFound.from_user === profile?.user_id ? connFound.to_user_name : connFound.from_user_name;
+                const partnerHeadline = connFound.from_user === profile?.user_id ? connFound.to_user_headline : connFound.from_user_headline;
+                setActivePartner({ partner_id: partnerIdInt, partner_name: partnerName, partner_headline: partnerHeadline });
+              } else {
+                setActivePartner({ partner_id: partnerIdInt, partner_name: `Member #${partnerIdInt}` });
+              }
+            }
+          } else if (!selectedPartnerId && convData && convData.length > 0) {
+            setSelectedPartnerId(convData[0].partner_id);
+            setActivePartner(convData[0]);
+          } else if (selectedPartnerId && convData) {
+            const found = convData.find((c) => c.partner_id === selectedPartnerId);
             if (found) setActivePartner(found);
           }
         } else {
-          const commData = await getCommunities();
-          setCommunities(commData || []);
           if (!selectedCommunityId && commData && commData.length > 0) {
             setSelectedCommunityId(commData[0].id);
             setActiveCommunity(commData[0]);
@@ -81,9 +111,9 @@ export default function Messages() {
       }
     }
     loadThreads();
-  }, [channelType, selectedPartnerId, selectedCommunityId]);
+  }, [channelType, directPartnerId, selectedPartnerId, selectedCommunityId, profile?.user_id]);
 
-  // Load 1-on-1 messages when partner changes
+  // Load direct messages
   const fetchPersonalMessages = useCallback(
     async (partnerId) => {
       if (!partnerId) return;
@@ -92,7 +122,7 @@ export default function Messages() {
         const msgs = await getConversationMessages(partnerId);
         setPersonalMessages(msgs || []);
       } catch {
-        showToast("Could not load personal conversation.", "error");
+        showToast("Could not load conversation.", "error");
       } finally {
         setLoadingChat(false);
       }
@@ -106,7 +136,7 @@ export default function Messages() {
     }
   }, [channelType, selectedPartnerId, fetchPersonalMessages]);
 
-  // Load community messages when community changes
+  // Load community messages
   const fetchCommunityMessages = useCallback(
     async (commId) => {
       if (!commId) return;
@@ -129,53 +159,65 @@ export default function Messages() {
     }
   }, [channelType, selectedCommunityId, fetchCommunityMessages]);
 
-  // Send Personal 1-on-1 Message
+  // Send Direct Message
   async function handleSendPersonal(e) {
     e.preventDefault();
     if (!personalText.trim() || !selectedPartnerId) return;
     setSending(true);
     try {
-      const sent = await sendMessage(selectedPartnerId, { content: personalText.trim() });
-      setPersonalMessages((prev) => [...prev, sent]);
+      const msg = await sendMessage(selectedPartnerId, { content: personalText.trim() });
+      setPersonalMessages((prev) => [...prev, msg]);
       setPersonalText("");
-      // Update snippet in conversation list
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.partner_id === selectedPartnerId ? { ...c, last_message: sent.content } : c
-        )
-      );
-    } catch (err) {
-      showToast(err?.response?.data?.detail || "Message delivery failed.", "error");
+      // Refresh conversation preview in sidebar
+      getConversations().then((res) => setConversations(res || []));
+    } catch {
+      showToast("Unable to send message.", "error");
     } finally {
       setSending(false);
     }
   }
 
-  // Send Community / Group Message
+  // Send Community Message
   async function handleSendCommunity(e) {
     e.preventDefault();
     if (!communityText.trim() || !selectedCommunityId) return;
     setSending(true);
     try {
-      const sent = await sendCommunityMessage(selectedCommunityId, communityText.trim());
-      setCommunityMessages((prev) => [...prev, sent]);
+      const msg = await sendCommunityMessage(selectedCommunityId, communityText.trim());
+      setCommunityMessages((prev) => [...prev, msg]);
       setCommunityText("");
-    } catch (err) {
-      showToast(err?.response?.data?.detail || "Group message delivery failed.", "error");
+    } catch {
+      showToast("Unable to post to community.", "error");
     } finally {
       setSending(false);
     }
   }
 
+  function handleStartChatWithContact(partnerId, partnerName, partnerHeadline) {
+    setSelectedPartnerId(partnerId);
+    setActivePartner({ partner_id: partnerId, partner_name: partnerName, partner_headline: partnerHeadline });
+    setChannelType("personal");
+    setShowComposeModal(false);
+    setSearchParams({ to: partnerId });
+  }
+
   return (
     <div className="container page" style={{ paddingTop: 16 }}>
       {/* Header bar */}
-      <div style={{ marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
         <div>
-          <span className="eyebrow" style={{ margin: 0 }}>Communication Hub</span>
-          <h1 style={{ margin: "2px 0 0", fontSize: 22, fontWeight: 800 }}>Messaging & Communities</h1>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Messaging</h2>
+          <p className="text-xs muted" style={{ margin: "2px 0 0" }}>
+            Direct conversations and community group discussions
+          </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
+          <button
+            className="btn btn-primary btn-sm"
+            onClick={() => setShowComposeModal(true)}
+          >
+            ✍ + New Message
+          </button>
           <Link to="/network" className="btn btn-outline btn-sm">
             Manage Network
           </Link>
@@ -195,7 +237,7 @@ export default function Messages() {
                 setSearchParams({});
               }}
             >
-              Direct Chats (1-on-1)
+              Direct Messages
             </button>
             <button
               className={`messages-tab-btn ${channelType === "groups" ? "active" : ""}`}
@@ -216,11 +258,40 @@ export default function Messages() {
               </div>
             ) : channelType === "personal" ? (
               conversations.length === 0 ? (
-                <div style={{ padding: 24, textAlign: "center" }}>
-                  <p className="muted text-sm">No 1-on-1 chats yet.</p>
-                  <p className="text-xs muted">
-                    Connect with candidates or recruiters from your network to start chatting!
+                <div style={{ padding: 20, textAlign: "center" }}>
+                  <p className="muted text-sm" style={{ fontWeight: 600 }}>No conversations yet</p>
+                  <p className="text-xs muted" style={{ margin: "4px 0 12px" }}>
+                    Select a connected member to start discussing opportunities.
                   </p>
+                  {connections.length > 0 ? (
+                    <div style={{ textAlign: "left", marginTop: 10 }}>
+                      <span className="text-xs font-semibold muted" style={{ textTransform: "uppercase" }}>
+                        Your Connections:
+                      </span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+                        {connections.slice(0, 5).map((c) => {
+                          const partnerId = c.from_user === profile?.user_id ? c.to_user : c.from_user;
+                          const partnerName = c.from_user === profile?.user_id ? c.to_user_name : c.from_user_name;
+                          const partnerHeadline = c.from_user === profile?.user_id ? c.to_user_headline : c.from_user_headline;
+                          return (
+                            <button
+                              key={c.id}
+                              type="button"
+                              className="btn btn-ghost btn-sm"
+                              style={{ justifyContent: "flex-start", padding: "6px 8px", textAlign: "left" }}
+                              onClick={() => handleStartChatWithContact(partnerId, partnerName, partnerHeadline)}
+                            >
+                              💬 {partnerName}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <Link to="/network" className="btn btn-outline btn-sm">
+                      Find Connections
+                    </Link>
+                  )}
                 </div>
               ) : (
                 conversations.map((conv) => (
@@ -232,6 +303,7 @@ export default function Messages() {
                     onClick={() => {
                       setSelectedPartnerId(conv.partner_id);
                       setActivePartner(conv);
+                      setSearchParams({ to: conv.partner_id });
                     }}
                   >
                     {conv.partner_avatar ? (
@@ -258,7 +330,7 @@ export default function Messages() {
                         )}
                       </div>
                       <p className="message-thread-snippet">
-                        {conv.last_message || "Active connection"}
+                        {conv.last_message || "Active conversation"}
                       </p>
                     </div>
                   </div>
@@ -281,6 +353,7 @@ export default function Messages() {
                   onClick={() => {
                     setSelectedCommunityId(comm.id);
                     setActiveCommunity(comm);
+                    setSearchParams({ community: comm.id });
                   }}
                 >
                   <div
@@ -333,7 +406,7 @@ export default function Messages() {
                         {activePartner?.partner_name || "Direct Message"}
                       </strong>
                       <span className="text-xs muted">
-                        {activePartner?.partner_headline || "1-on-1 Private Conversation"}
+                        {activePartner?.partner_headline || "GenHire Professional Member"}
                       </span>
                     </div>
                   </div>
@@ -349,10 +422,13 @@ export default function Messages() {
                       <div className="spinner" />
                     </div>
                   ) : personalMessages.length === 0 ? (
-                    <div style={{ margin: "auto", textAlign: "center" }} className="muted text-sm">
-                      <p>Start a secure private conversation with this member.</p>
-                      <p className="text-xs">
-                        Exchange inquiries, schedule interviews, and share portfolio details.
+                    <div style={{ margin: "auto", textAlign: "center", padding: "40px 20px" }} className="muted text-sm">
+                      <div style={{ fontSize: 32, marginBottom: 8 }}>💬</div>
+                      <h4 style={{ margin: "0 0 6px", color: "var(--ink)" }}>
+                        Start a conversation with {activePartner?.partner_name || "this member"}
+                      </h4>
+                      <p className="text-xs" style={{ maxWidth: 360, margin: "0 auto" }}>
+                        Discuss role openings, exchange technical background, or schedule an interview.
                       </p>
                     </div>
                   ) : (
@@ -379,10 +455,11 @@ export default function Messages() {
                   <input
                     type="text"
                     className="input"
-                    placeholder="Write a private message..."
+                    placeholder={`Message ${activePartner?.partner_name || ""}...`}
                     value={personalText}
                     onChange={(e) => setPersonalText(e.target.value)}
                     style={{ flex: 1 }}
+                    autoFocus
                   />
                   <button
                     type="submit"
@@ -395,8 +472,14 @@ export default function Messages() {
               </>
             ) : (
               <div style={{ margin: "auto", textAlign: "center", padding: 40 }} className="muted">
-                <h4>No personal conversation selected</h4>
-                <p className="text-sm">Choose a contact on the left to read and send messages.</p>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>💬</div>
+                <h3 style={{ margin: "0 0 6px", color: "var(--ink)" }}>Your Messages</h3>
+                <p className="text-sm muted" style={{ maxWidth: 360, margin: "0 auto 18px" }}>
+                  Select an active conversation on the left or compose a new message to connected colleagues.
+                </p>
+                <button className="btn btn-primary btn-sm" onClick={() => setShowComposeModal(true)}>
+                  ✍ Start New Conversation
+                </button>
               </div>
             )
           ) : selectedCommunityId ? (
@@ -411,7 +494,7 @@ export default function Messages() {
                   </div>
                   <div>
                     <strong style={{ fontSize: 15, display: "block", color: "var(--ink)" }}>
-                      {activeCommunity?.name || "Community Group"}
+                      {activeCommunity?.name || "Community Channel"}
                     </strong>
                     <span className="text-xs muted">
                       {activeCommunity?.community_type === "opensource"
@@ -439,10 +522,10 @@ export default function Messages() {
                     <div className="spinner" />
                   </div>
                 ) : communityMessages.length === 0 ? (
-                  <div style={{ margin: "auto", textAlign: "center" }} className="muted text-sm">
-                    <p>Welcome to #{activeCommunity?.name || "this community"}!</p>
+                  <div style={{ margin: "auto", textAlign: "center", padding: 36 }} className="muted text-sm">
+                    <p style={{ fontWeight: 600 }}>Welcome to #{activeCommunity?.name || "this community"}!</p>
                     <p className="text-xs">
-                      Share updates, ask questions, and collaborate with all members of this group.
+                      Share updates, collaborate, and communicate with members of this channel.
                     </p>
                   </div>
                 ) : (
@@ -475,7 +558,7 @@ export default function Messages() {
                 <input
                   type="text"
                   className="input"
-                  placeholder={`Post to #${activeCommunity?.name || "community"}...`}
+                  placeholder={`Post message to #${activeCommunity?.name || "community"}...`}
                   value={communityText}
                   onChange={(e) => setCommunityText(e.target.value)}
                   style={{ flex: 1 }}
@@ -491,12 +574,98 @@ export default function Messages() {
             </>
           ) : (
             <div style={{ margin: "auto", textAlign: "center", padding: 40 }} className="muted">
-              <h4>No group or community selected</h4>
-              <p className="text-sm">Select an open-source group or community from the left list.</p>
+              <h4>No channel selected</h4>
+              <p className="text-sm">Choose a community from the left to read and send group messages.</p>
             </div>
           )}
         </div>
       </div>
+
+      {/* New Conversation Modal */}
+      {showComposeModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(15, 23, 42, 0.5)",
+            backdropFilter: "blur(2px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            padding: 16,
+          }}
+          onClick={() => setShowComposeModal(false)}
+        >
+          <div
+            className="card"
+            style={{ maxWidth: 440, width: "100%", maxHeight: "80vh", overflowY: "auto" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <h3 style={{ margin: 0, fontSize: 16 }}>New Message</h3>
+              <button className="btn btn-ghost btn-sm" onClick={() => setShowComposeModal(false)}>✕</button>
+            </div>
+
+            {connections.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "20px 0" }}>
+                <p className="muted text-sm">You haven't established connections yet.</p>
+                <p className="text-xs muted" style={{ margin: "4px 0 14px" }}>
+                  Connect with professionals from the Network tab to exchange direct messages.
+                </p>
+                <Link
+                  to="/network"
+                  className="btn btn-primary btn-sm"
+                  onClick={() => setShowComposeModal(false)}
+                >
+                  Discover Connections
+                </Link>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <span className="text-xs muted font-semibold" style={{ textTransform: "uppercase" }}>
+                  Select Connection:
+                </span>
+                {connections.map((c) => {
+                  const partnerId = c.from_user === profile?.user_id ? c.to_user : c.from_user;
+                  const partnerName = c.from_user === profile?.user_id ? c.to_user_name : c.from_user_name;
+                  const partnerHeadline = c.from_user === profile?.user_id ? c.to_user_headline : c.from_user_headline;
+
+                  return (
+                    <div
+                      key={c.id}
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        padding: "8px 12px",
+                        borderRadius: 6,
+                        border: "1px solid var(--border)",
+                        cursor: "pointer",
+                        background: "#F8FAFC",
+                      }}
+                      onClick={() => handleStartChatWithContact(partnerId, partnerName, partnerHeadline)}
+                    >
+                      <div>
+                        <strong style={{ fontSize: 14 }}>{partnerName}</strong>
+                        <p className="text-xs muted" style={{ margin: "2px 0 0" }}>
+                          {partnerHeadline || "GenHire Member"}
+                        </p>
+                      </div>
+                      <button className="btn btn-primary btn-sm" style={{ fontSize: 12, padding: "4px 10px" }}>
+                        Chat →
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
