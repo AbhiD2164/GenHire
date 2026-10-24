@@ -308,6 +308,47 @@ class UnreadMessageCountView(APIView):
         return Response({"unread_count": count})
 
 
+def _seed_default_communities(creator_user):
+    """Auto-seeds official professional & open-source communities if none exist."""
+    seeds = [
+        {
+            "name": "Open Source AI & ML Innovators",
+            "slug": "open-source-ai-ml-innovators",
+            "community_type": "open_source",
+            "description": "Collaborative research and engineering on open-source transformer models, vector search, and scalable ML architectures.",
+        },
+        {
+            "name": "Cloud Architecture & High-Scale Systems",
+            "slug": "cloud-architecture-high-scale-systems",
+            "community_type": "public_group",
+            "description": "Enterprise backend engineers, SREs, and DevOps professionals discussing distributed resilience and cloud microservices.",
+        },
+        {
+            "name": "Healthcare Informatics & BioTech",
+            "slug": "healthcare-informatics-biotech",
+            "community_type": "public_group",
+            "description": "Clinical informatics specialists, biomedical data scientists, and digital health software builders.",
+        },
+        {
+            "name": "FinTech & Quantitative Engineering",
+            "slug": "fintech-quantitative-engineering",
+            "community_type": "public_group",
+            "description": "Financial engineers, quantitative analysts, and algorithmic system developers.",
+        },
+    ]
+    for s in seeds:
+        comm, _ = Community.objects.get_or_create(
+            slug=s["slug"],
+            defaults={
+                "name": s["name"],
+                "community_type": s["community_type"],
+                "description": s["description"],
+                "creator": creator_user,
+            },
+        )
+        comm.members.add(creator_user)
+
+
 # ---------- Communities & Groups ----------
 
 class CommunityListCreateView(generics.ListCreateAPIView):
@@ -318,6 +359,10 @@ class CommunityListCreateView(generics.ListCreateAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
+        # Auto-seed standard official communities if database is empty
+        if not Community.objects.exists():
+            _seed_default_communities(self.request.user)
+
         qs = Community.objects.all().prefetch_related("members")
         ctype = self.request.query_params.get("type")
         mine = self.request.query_params.get("mine")

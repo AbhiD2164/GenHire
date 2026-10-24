@@ -34,9 +34,14 @@ export default function Messages() {
 
   // Communities & Groups state
   const [communities, setCommunities] = useState([]);
-  const [selectedCommunityId, setSelectedCommunityId] = useState(
-    directCommunityId ? parseInt(directCommunityId) : null
-  );
+  const [selectedCommunityId, setSelectedCommunityId] = useState(() => {
+    if (!directCommunityId) return null;
+    let num = parseInt(directCommunityId);
+    if (isNaN(num) && directCommunityId.startsWith("curated-")) {
+      num = parseInt(directCommunityId.replace("curated-", ""));
+    }
+    return !isNaN(num) ? num : null;
+  });
   const [activeCommunity, setActiveCommunity] = useState(null);
   const [communityMessages, setCommunityMessages] = useState([]);
   const [communityText, setCommunityText] = useState("");
@@ -71,21 +76,23 @@ export default function Messages() {
         if (channelType === "personal") {
           if (directPartnerId) {
             const partnerIdInt = parseInt(directPartnerId);
-            setSelectedPartnerId(partnerIdInt);
-            const found = (convData || []).find((c) => c.partner_id === partnerIdInt);
-            if (found) {
-              setActivePartner(found);
-            } else {
-              // Check in connections
-              const connFound = (connData?.connections || []).find(
-                (c) => c.from_user === partnerIdInt || c.to_user === partnerIdInt
-              );
-              if (connFound) {
-                const partnerName = connFound.from_user === profile?.user_id ? connFound.to_user_name : connFound.from_user_name;
-                const partnerHeadline = connFound.from_user === profile?.user_id ? connFound.to_user_headline : connFound.from_user_headline;
-                setActivePartner({ partner_id: partnerIdInt, partner_name: partnerName, partner_headline: partnerHeadline });
+            if (!isNaN(partnerIdInt)) {
+              setSelectedPartnerId(partnerIdInt);
+              const found = (convData || []).find((c) => c.partner_id === partnerIdInt);
+              if (found) {
+                setActivePartner(found);
               } else {
-                setActivePartner({ partner_id: partnerIdInt, partner_name: `Member #${partnerIdInt}` });
+                // Check in connections
+                const connFound = (connData?.connections || []).find(
+                  (c) => c.from_user === partnerIdInt || c.to_user === partnerIdInt
+                );
+                if (connFound) {
+                  const partnerName = connFound.from_user === profile?.user_id ? connFound.to_user_name : connFound.from_user_name;
+                  const partnerHeadline = connFound.from_user === profile?.user_id ? connFound.to_user_headline : connFound.from_user_headline;
+                  setActivePartner({ partner_id: partnerIdInt, partner_name: partnerName, partner_headline: partnerHeadline });
+                } else {
+                  setActivePartner({ partner_id: partnerIdInt, partner_name: `Member #${partnerIdInt}` });
+                }
               }
             }
           } else if (!selectedPartnerId && convData && convData.length > 0) {
@@ -96,12 +103,36 @@ export default function Messages() {
             if (found) setActivePartner(found);
           }
         } else {
-          if (!selectedCommunityId && commData && commData.length > 0) {
-            setSelectedCommunityId(commData[0].id);
-            setActiveCommunity(commData[0]);
-          } else if (selectedCommunityId && commData) {
-            const found = commData.find((c) => c.id === selectedCommunityId);
-            if (found) setActiveCommunity(found);
+          // Groups channel
+          let targetComm = null;
+          if (directCommunityId && commData && commData.length > 0) {
+            let parsed = parseInt(directCommunityId);
+            if (isNaN(parsed) && directCommunityId.startsWith("curated-")) {
+              parsed = parseInt(directCommunityId.replace("curated-", ""));
+            }
+            if (!isNaN(parsed)) {
+              targetComm = commData.find((c) => c.id === parsed) || commData[parsed - 1] || null;
+            }
+            if (!targetComm) {
+              targetComm = commData.find(
+                (c) =>
+                  c.slug === directCommunityId ||
+                  c.name.toLowerCase().includes(directCommunityId.toLowerCase())
+              );
+            }
+          }
+
+          if (!targetComm && selectedCommunityId && commData) {
+            targetComm = commData.find((c) => c.id === selectedCommunityId);
+          }
+
+          if (!targetComm && commData && commData.length > 0) {
+            targetComm = commData[0];
+          }
+
+          if (targetComm) {
+            setSelectedCommunityId(targetComm.id);
+            setActiveCommunity(targetComm);
           }
         }
       } catch (err) {
@@ -111,7 +142,7 @@ export default function Messages() {
       }
     }
     loadThreads();
-  }, [channelType, directPartnerId, selectedPartnerId, selectedCommunityId, profile?.user_id]);
+  }, [channelType, directPartnerId, directCommunityId, profile?.user_id]);
 
   // Load direct messages
   const fetchPersonalMessages = useCallback(
@@ -139,10 +170,11 @@ export default function Messages() {
   // Load community messages
   const fetchCommunityMessages = useCallback(
     async (commId) => {
-      if (!commId) return;
+      const numId = Number(commId);
+      if (!commId || isNaN(numId) || numId <= 0) return;
       setLoadingChat(true);
       try {
-        const msgs = await getCommunityMessages(commId);
+        const msgs = await getCommunityMessages(numId);
         setCommunityMessages(msgs || []);
       } catch {
         showToast("Could not load community group messages.", "error");
@@ -154,7 +186,7 @@ export default function Messages() {
   );
 
   useEffect(() => {
-    if (channelType === "groups" && selectedCommunityId) {
+    if (channelType === "groups" && selectedCommunityId && !isNaN(Number(selectedCommunityId))) {
       fetchCommunityMessages(selectedCommunityId);
     }
   }, [channelType, selectedCommunityId, fetchCommunityMessages]);

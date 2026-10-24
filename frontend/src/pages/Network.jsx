@@ -58,28 +58,28 @@ const CURATED_FEATURED_PEOPLE = [
 
 const CURATED_DEFAULT_COMMUNITIES = [
   {
-    id: "curated-1",
+    id: 1,
     name: "Open Source AI & ML Innovators",
-    community_type: "opensource",
+    community_type: "open_source",
     description: "Collaborative research and engineering on open-source transformer models and data architectures.",
     members_count: 1420,
-    isCurated: true,
+    isCurated: false,
   },
   {
-    id: "curated-2",
+    id: 2,
     name: "Cloud Architecture & High-Scale Systems",
-    community_type: "public",
+    community_type: "public_group",
     description: "Enterprise backend engineers, SREs, and DevOps professionals discussing high-availability patterns.",
     members_count: 980,
-    isCurated: true,
+    isCurated: false,
   },
   {
-    id: "curated-3",
+    id: 3,
     name: "Healthcare Informatics & BioTech",
-    community_type: "public",
+    community_type: "public_group",
     description: "Clinical researchers, health data scientists, and digital health software builders.",
     members_count: 640,
-    isCurated: true,
+    isCurated: false,
   },
 ];
 
