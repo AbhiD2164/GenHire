@@ -3,6 +3,7 @@ import { AuthProvider } from "./context/AuthContext";
 import { ToastProvider } from "./context/ToastContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 import Navbar from "./components/Navbar";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -29,33 +30,35 @@ export default function App() {
       <AuthProvider>
         <ToastProvider>
           <Navbar />
-          <Routes>
-            {/* Public */}
-            <Route path="/login" element={<Login />} />
-            <Route path="/signup" element={<Signup />} />
-            <Route path="/forgot-password" element={<PasswordResetRequest />} />
-            <Route path="/reset-password" element={<PasswordResetConfirm />} />
-            <Route path="/verify-email" element={<EmailVerification />} />
-            <Route path="/" element={<Landing />} />
+          <ErrorBoundary>
+            <Routes>
+              {/* Public */}
+              <Route path="/login" element={<Login />} />
+              <Route path="/signup" element={<Signup />} />
+              <Route path="/forgot-password" element={<PasswordResetRequest />} />
+              <Route path="/reset-password" element={<PasswordResetConfirm />} />
+              <Route path="/verify-email" element={<EmailVerification />} />
+              <Route path="/" element={<Landing />} />
 
-            {/* Protected – unified access for all members */}
-            <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
-            <Route path="/jobs" element={<ProtectedRoute><JobList /></ProtectedRoute>} />
-            <Route path="/jobs/:id" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
-            <Route path="/jobs/new" element={<ProtectedRoute><CreateJob /></ProtectedRoute>} />
-            <Route path="/jobs/:id/applications" element={<ProtectedRoute><JobApplications /></ProtectedRoute>} />
-            <Route path="/candidates" element={<ProtectedRoute><CandidateSearch /></ProtectedRoute>} />
-            <Route path="/resume-analysis" element={<ProtectedRoute><ResumeAnalysis /></ProtectedRoute>} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-            <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
-            <Route path="/profile/:userId" element={<ProtectedRoute><PublicProfile /></ProtectedRoute>} />
-            <Route path="/network" element={<ProtectedRoute><Network /></ProtectedRoute>} />
-            <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
-            <Route path="/message" element={<Navigate to="/messages" replace />} />
+              {/* Protected – unified access for all members */}
+              <Route path="/feed" element={<ProtectedRoute><Feed /></ProtectedRoute>} />
+              <Route path="/jobs" element={<ProtectedRoute><JobList /></ProtectedRoute>} />
+              <Route path="/jobs/:id" element={<ProtectedRoute><JobDetail /></ProtectedRoute>} />
+              <Route path="/jobs/new" element={<ProtectedRoute><CreateJob /></ProtectedRoute>} />
+              <Route path="/jobs/:id/applications" element={<ProtectedRoute><JobApplications /></ProtectedRoute>} />
+              <Route path="/candidates" element={<ProtectedRoute><CandidateSearch /></ProtectedRoute>} />
+              <Route path="/resume-analysis" element={<ProtectedRoute><ResumeAnalysis /></ProtectedRoute>} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
+              <Route path="/profile/:userId" element={<ProtectedRoute><PublicProfile /></ProtectedRoute>} />
+              <Route path="/network" element={<ProtectedRoute><Network /></ProtectedRoute>} />
+              <Route path="/messages" element={<ProtectedRoute><Messages /></ProtectedRoute>} />
+              <Route path="/message" element={<Navigate to="/messages" replace />} />
 
-            {/* Catch-all */}
-            <Route path="*" element={<Navigate to="/feed" replace />} />
-          </Routes>
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/feed" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </ToastProvider>
       </AuthProvider>
     </BrowserRouter>
