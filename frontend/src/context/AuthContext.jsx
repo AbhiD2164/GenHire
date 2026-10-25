@@ -12,25 +12,51 @@ export function AuthProvider({ children }) {
     if (!access) {
       setProfile(null);
       setLoading(false);
-      return;
+      return null;
     }
     try {
       const data = await authApi.getMe();
       setProfile(data);
-    } catch {
+      return data;
+    } catch (error) {
       setProfile(null);
+      const detail = error.response?.data?.detail;
+      const statusCode = error.response?.status;
+      const message = typeof detail === "string"
+        ? detail
+        : `Your account could not be loaded${statusCode ? ` (HTTP ${statusCode})` : ""}. Please try signing in again.`;
+      throw new Error(message, { cause: error });
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    refreshProfile();
+    refreshProfile().catch((error) => {
+      console.error("Could not restore the signed-in account.", error);
+    });
   }, [refreshProfile]);
 
   async function login(credentials) {
-    await authApi.login(credentials);
-    await refreshProfile();
+    try {
+      await authApi.login(credentials);
+      await refreshProfile();
+    } catch (error) {
+      authApi.logout();
+      setProfile(null);
+      throw error;
+    }
+  }
+
+  async function loginWithFirebase(payload) {
+    try {
+      await authApi.firebaseSignIn(payload);
+      await refreshProfile();
+    } catch (error) {
+      authApi.logout();
+      setProfile(null);
+      throw error;
+    }
   }
 
   function logout() {
@@ -39,7 +65,7 @@ export function AuthProvider({ children }) {
   }
 
   return (
-    <AuthContext.Provider value={{ profile, loading, login, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ profile, loading, login, loginWithFirebase, logout, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

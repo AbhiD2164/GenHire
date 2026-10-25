@@ -1,16 +1,6 @@
-"""
-Verification utilities for candidate resumes and recruiter corporate affiliations.
-Prevents fake recruiter accounts and fake/malicious candidate registrations.
-"""
+"""Security checks for uploaded resumes."""
 import re
 from urllib.parse import urlparse
-
-FREE_EMAIL_DOMAINS = {
-    "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com",
-    "aol.com", "icloud.com", "mail.com", "zoho.com", "proton.me",
-    "protonmail.com", "yandex.com", "gmx.com", "fastmail.com",
-    "tempmail.com", "10minutemail.com", "guerrillamail.com", "trashmail.com",
-}
 
 SUSPICIOUS_DOMAINS = {
     "xyz", "top", "work", "click", "buzz", "tk", "ml", "ga", "cf", "gq",
@@ -19,60 +9,6 @@ SUSPICIOUS_DOMAINS = {
 SHORTENER_DOMAINS = {
     "bit.ly", "tinyurl.com", "cutt.ly", "is.gd", "t.co", "ow.ly", "rb.gy", "shorturl.at", "grabify.link",
 }
-
-
-def clean_domain(url_or_domain: str) -> str:
-    """Extract clean base domain from a URL or email domain string."""
-    text = (url_or_domain or "").strip().lower()
-    if not text:
-        return ""
-    if "://" in text:
-        try:
-            parsed = urlparse(text)
-            text = parsed.hostname or text
-        except Exception:
-            pass
-    text = re.sub(r"^www\.", "", text)
-    text = text.split("/")[0].split(":")[0]
-    return text
-
-
-def verify_recruiter_profile(email: str, company_name: str, company_website: str):
-    """
-    Verifies whether a recruiter email belongs to the claimed company domain.
-    Returns: (is_verified: bool, notes: str)
-    """
-    email_clean = (email or "").strip().lower()
-    if "@" not in email_clean:
-        return False, "Invalid recruiter email address provided."
-
-    email_domain = email_clean.split("@")[-1].strip().lower()
-    comp_domain = clean_domain(company_website)
-
-    # 1. Reject or flag disposable / free public email providers for recruiter roles
-    if email_domain in FREE_EMAIL_DOMAINS:
-        return False, (
-            f"Registration uses a free email provider (@{email_domain}). "
-            f"Recruiter role requires a corporate email matching '{company_name or 'the company'}' "
-            f"or administrator verification."
-        )
-
-    # 2. Check corporate website domain match if provided
-    if comp_domain:
-        # Check direct match or subdomain match (e.g. google.com and corp.google.com)
-        if email_domain == comp_domain or email_domain.endswith("." + comp_domain) or comp_domain.endswith("." + email_domain):
-            return True, f"Verified: Recruiter email domain (@{email_domain}) successfully matches company domain ({comp_domain})."
-        else:
-            return False, (
-                f"Domain mismatch: Recruiter email domain (@{email_domain}) does not match "
-                f"company website ({comp_domain}). Subject to manual verification."
-            )
-
-    # 3. If legitimate custom corporate domain without explicit website
-    if "." in email_domain and email_domain not in FREE_EMAIL_DOMAINS:
-        return True, f"Verified corporate email domain (@{email_domain}) for {company_name or 'the organization'}."
-
-    return False, "Unable to verify company corporate domain."
 
 
 def verify_candidate_resume_security(file_name: str, file_bytes: bytes, raw_text: str):

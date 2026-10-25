@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 const highlights = [
   ["01", "Signal-first matching", "Resume text becomes structured evidence, not a keyword pile."],
-  ["02", "Human-ready shortlist", "Recruiters see relevant candidates with transparent screening context."],
+  ["02", "Clearer job decisions", "People can review applications and communicate with applicants directly."],
   ["03", "One professional graph", "Jobs, conversations, and career momentum stay in one place."],
 ];
 
@@ -23,7 +23,7 @@ export default function Landing() {
             </div>
             <div className="landing-proof">
               <span className="proof-dot" />
-              <span>Built for candidates and hiring teams across every industry</span>
+              <span>Built for professionals and organizations across every industry</span>
             </div>
           </div>
           <div className="signal-board" aria-label="GenHire matching overview">

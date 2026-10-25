@@ -49,7 +49,7 @@
 }
 
 .navlink {
-  padding: 8px 15px;
+  padding: 8px 9px;
   border-radius: var(--radius-sm);
   font-size: 14px;
   font-weight: 600;
@@ -82,6 +82,20 @@
   border: 2px solid var(--border-strong);
   transition: border-color 0.15s ease;
 }
+
+.notification-count {
+  display: inline-flex;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--brand-strong);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
 .nav-avatar-link:hover .nav-avatar-fallback,
 .nav-avatar-link:hover .nav-avatar {
   border-color: var(--brand);
@@ -99,4 +113,117 @@
 
 @media (max-width: 860px) {
   .nav-links { display: none; }
+}
+.navbar-search {
+  display: flex;
+  align-items: center;
+  min-width: 220px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+.navbar-search input {
+  min-width: 0;
+  width: 220px;
+  padding: 8px 12px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  font-size: 12px;
+}
+
+.navbar-search button {
+  padding: 8px 12px;
+  color: var(--brand-strong);
+  background: transparent;
+  border: 0;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notification-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+@media (max-width: 1100px) {
+  .navbar-search {
+    min-width: 170px;
+  }
+
+  .navbar-search input {
+    width: 150px;
+  }
+}
+
+@media (max-width: 760px) {
+  .navbar-search {
+    min-width: 0;
+  }
+
+  .navbar-search input {
+    width: 88px;
+    padding: 8px;
+  }
+
+  .navbar-inner {
+    gap: 8px;
+  }
+
+  .nav-actions {
+    gap: 6px;
+  }
+
+  .navbar-search button {
+    padding: 8px;
+    font-size: 0;
+  }
+
+  .navbar-search button::after {
+    content: "⌕";
+    font-size: 16px;
+  }
+
+  .notification-nav-link {
+    width: 34px;
+    min-width: 34px;
+    justify-content: center;
+    overflow: hidden;
+    font-size: 0;
+    padding: 6px;
+  }
+
+  .notification-nav-link::before {
+    content: "♢";
+    font-size: 17px;
+  }
+
+  .notification-nav-link .notification-count {
+    position: absolute;
+    transform: translate(13px, -10px);
+    font-size: 10px;
+  }
+
+  .nav-actions > a[aria-label$="community join requests"] {
+    display: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .nav-links a[href="/resume-analysis"] {
+    display: none;
+  }
+}
+
+@media (max-width: 1000px) {
+  .nav-links a[href="/dashboard"] {
+    display: none;
+  }
 }

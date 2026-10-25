@@ -1,32 +1,37 @@
+import logging
 import secrets
+from binascii import Error as Base64DecodeError
 from datetime import timedelta
+from smtplib import SMTPException
 
 from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.tokens import default_token_generator
 from django.contrib.auth.password_validation import validate_password
+from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db.models import Q
+from django.utils import timezone
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, permissions, status, filters, serializers
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
-from .models import CustomUser, EmailVerificationCode, Profile, WorkExperience
+from .models import Achievement, CustomUser, Education, EmailVerificationCode, Profile, WorkExperience
 from .serializers import (
-    SignupSerializer, ProfileSerializer, WorkExperienceSerializer, UserSummarySerializer,
+    SignupSerializer, ProfileSerializer, WorkExperienceSerializer, EducationSerializer,
+    AchievementSerializer, PublicProfileSerializer, UserSummarySerializer,
 )
-from .verification import verify_recruiter_profile
 from .firebase_service import (
     verify_firebase_token,
     send_firebase_email_verification,
     send_firebase_password_reset,
 )
-from django.core.mail import send_mail
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from django.utils.encoding import force_bytes, force_str
-from django.utils import timezone
-from django.conf import settings
-from rest_framework_simplejwt.tokens import RefreshToken
+
+logger = logging.getLogger(__name__)
 
 
 class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -35,7 +40,6 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
-        token["role"] = user.role
         token["username"] = user.username
         return token
 
@@ -166,26 +170,24 @@ class MeView(APIView):
             user.phone_number = phone_number.strip()
             user_updated_fields.append("phone_number")
 
-        # Company affiliation updates for recruiter verification
         company_name = request.data.get("company_name")
         company_website = request.data.get("company_website")
         if company_name is not None:
-            user.company_name = company_name.strip()
+            user.company_name = str(company_name or "").strip()
             user_updated_fields.append("company_name")
         if company_website is not None:
-            user.company_website = company_website.strip()
+            user.company_website = serializers.URLField(
+                allow_blank=True
+            ).run_validation(company_website)
             user_updated_fields.append("company_website")
-
-        if user.role == "recruiter" and (company_name is not None or company_website is not None):
-            is_v, notes = verify_recruiter_profile(user.email, user.company_name, user.company_website)
-            user.is_recruiter_verified = is_v
-            user.recruiter_verification_notes = notes
-            user_updated_fields.extend(["is_recruiter_verified", "recruiter_verification_notes"])
 
         if user_updated_fields:
             user.save(update_fields=list(set(user_updated_fields)))
 
-        serializer = ProfileSerializer(profile, data=request.data, partial=True, context={"request": request})
+        profile_data = request.data.copy()
+        for user_field in ("username", "first_name", "last_name", "phone_number", "company_website"):
+            profile_data.pop(user_field, None)
+        serializer = ProfileSerializer(profile, data=profile_data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
@@ -193,8 +195,10 @@ class MeView(APIView):
 
 
 class PublicProfileView(generics.RetrieveAPIView):
-    queryset = Profile.objects.select_related("user").prefetch_related("experiences")
-    serializer_class = ProfileSerializer
+    queryset = Profile.objects.select_related("user").prefetch_related(
+        "experiences", "education", "achievements"
+    )
+    serializer_class = PublicProfileSerializer
     permission_classes = [permissions.IsAuthenticated]
     lookup_field = "user_id"
     lookup_url_kwarg = "user_id"
@@ -220,7 +224,47 @@ class WorkExperienceDetailView(generics.RetrieveUpdateDestroyAPIView):
         return WorkExperience.objects.filter(profile__user=self.request.user)
 
 
-class CandidateSearchView(generics.ListAPIView):
+class EducationListCreateView(generics.ListCreateAPIView):
+    serializer_class = EducationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Education.objects.filter(profile__user=self.request.user)
+
+    def perform_create(self, serializer):
+        profile, _ = Profile.objects.get_or_create(user=self.request.user)
+        serializer.save(profile=profile)
+
+
+class EducationDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = EducationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Education.objects.filter(profile__user=self.request.user)
+
+
+class AchievementListCreateView(generics.ListCreateAPIView):
+    serializer_class = AchievementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Achievement.objects.filter(profile__user=self.request.user)
+
+    def perform_create(self, serializer):
+        profile, _ = Profile.objects.get_or_create(user=self.request.user)
+        serializer.save(profile=profile)
+
+
+class AchievementDetailView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = AchievementSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Achievement.objects.filter(profile__user=self.request.user)
+
+
+class PeopleSearchView(generics.ListAPIView):
     """
     Search talent / members by skill, location, headline/name —
     works for any industry since it's just matching free-text fields.
@@ -228,7 +272,11 @@ class CandidateSearchView(generics.ListAPIView):
     serializer_class = UserSummarySerializer
     permission_classes = [permissions.IsAuthenticated]
     filter_backends = [filters.SearchFilter]
-    search_fields = ["username", "first_name", "last_name"]
+    search_fields = [
+        "username", "first_name", "last_name", "profile__headline",
+        "profile__industry", "profile__location", "profile__skills",
+        "company_name",
+    ]
 
     def get_queryset(self):
         qs = CustomUser.objects.exclude(id=self.request.user.id).select_related("profile")
@@ -255,9 +303,29 @@ class PasswordResetRequestView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        email = request.data.get("email")
-        if not email:
+        email = request.data.get("email", "")
+        if not isinstance(email, str) or not email.strip():
             return Response({"detail": "Email required."}, status=status.HTTP_400_BAD_REQUEST)
+        email = email.strip()
+
+        frontend_url = settings.FRONTEND_URL
+        if not frontend_url and not settings.DEBUG:
+            logger.error("Password reset is unavailable because FRONTEND_URL is not configured.")
+            return Response(
+                {"detail": "Password reset is temporarily unavailable. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+        if (
+            settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
+            and (not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD)
+        ):
+            logger.error("Password reset is unavailable because SMTP email settings are incomplete.")
+            return Response(
+                {"detail": "Password reset is temporarily unavailable. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
         try:
             user = CustomUser.objects.get(email__iexact=email)
         except CustomUser.DoesNotExist:
@@ -266,10 +334,17 @@ class PasswordResetRequestView(APIView):
 
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         token = default_token_generator.make_token(user)
-        reset_link = (settings.FRONTEND_URL or "http://localhost:5173").rstrip("/") + "/reset-password"
+        reset_link = (frontend_url or "http://localhost:5173").rstrip("/") + "/reset-password"
         reset_url = f"{reset_link}?uid={uid}&token={token}"
 
-        send_firebase_password_reset(user, reset_url)
+        try:
+            send_firebase_password_reset(user, reset_url)
+        except (OSError, SMTPException):
+            logger.exception("Failed to send a password reset email.")
+            return Response(
+                {"detail": "Password reset is temporarily unavailable. Please try again later."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         return Response({"detail": "If an account with that email exists, a reset link was sent."})
 
@@ -281,12 +356,15 @@ class PasswordResetConfirmView(APIView):
         uid = request.data.get("uid")
         token = request.data.get("token")
         new_password = request.data.get("new_password")
-        if not uid or not token or not new_password:
+        if not all(isinstance(value, str) and value for value in (uid, token, new_password)):
             return Response({"detail": "uid, token and new_password are required."}, status=status.HTTP_400_BAD_REQUEST)
         try:
             uid_decoded = force_str(urlsafe_base64_decode(uid))
+        except (Base64DecodeError, TypeError, UnicodeDecodeError, ValueError):
+            return Response({"detail": "Invalid uid."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
             user = CustomUser.objects.get(pk=uid_decoded)
-        except Exception:
+        except (CustomUser.DoesNotExist, TypeError, ValueError):
             return Response({"detail": "Invalid uid."}, status=status.HTTP_400_BAD_REQUEST)
 
         if not default_token_generator.check_token(user, token):
@@ -294,7 +372,7 @@ class PasswordResetConfirmView(APIView):
 
         try:
             validate_password(new_password, user)
-        except Exception as exc:
+        except ValidationError as exc:
             return Response({"new_password": list(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
 
         from .serializers import get_user_password_bias
@@ -328,10 +406,6 @@ class GoogleOAuthView(APIView):
         if not email or not email_verified:
             return Response({"detail": "Google account email is not verified."}, status=status.HTTP_400_BAD_REQUEST)
 
-        requested_role = request.data.get("role", "applicant")
-        if requested_role not in {"applicant", "recruiter"}:
-            requested_role = "applicant"
-
         try:
             user = CustomUser.objects.get(email__iexact=email)
         except CustomUser.DoesNotExist:
@@ -341,7 +415,6 @@ class GoogleOAuthView(APIView):
             user = CustomUser.objects.create(
                 username=username,
                 email=email,
-                role=requested_role,
                 email_verified=True,
                 first_name=display_name.split()[0] if display_name else "",
                 last_name=" ".join(display_name.split()[1:]) if display_name and len(display_name.split()) > 1 else "",
@@ -356,7 +429,6 @@ class GoogleOAuthView(APIView):
                 "id": user.id,
                 "username": user.username,
                 "email": user.email,
-                "role": user.role,
             },
         })
 
@@ -420,10 +492,6 @@ class FirebaseLoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # ── Optional: recruiter registration params ───────────────────────────
-        requested_role = request.data.get("role", "applicant")
-        if requested_role not in {"applicant", "recruiter"}:
-            requested_role = "applicant"
         company_name = (request.data.get("company_name") or "").strip()
         company_website = (request.data.get("company_website") or "").strip()
 
@@ -442,30 +510,19 @@ class FirebaseLoginView(APIView):
             if CustomUser.objects.filter(username__iexact=username).exists():
                 username = f"{base_username}_{secrets.token_hex(3)}"
 
-            is_recruiter_verified = False
-            recruiter_notes = ""
-            if requested_role == "recruiter" and company_name:
-                is_recruiter_verified, recruiter_notes = verify_recruiter_profile(
-                    email, company_name, company_website
-                )
-
             name_parts = display_name.split()
             user = CustomUser.objects.create(
                 username=username,
                 email=email,
-                role=requested_role,
                 email_verified=True,  # Google guarantees this
                 first_name=name_parts[0] if name_parts else "",
                 last_name=" ".join(name_parts[1:]) if len(name_parts) > 1 else "",
-                company_name=company_name if requested_role == "recruiter" else "",
-                company_website=company_website if requested_role == "recruiter" else "",
-                is_recruiter_verified=is_recruiter_verified,
-                recruiter_verification_notes=recruiter_notes,
-                is_candidate_verified=(requested_role == "applicant"),
+                company_name=company_name,
+                company_website=company_website,
             )
             Profile.objects.get_or_create(
                 user=user,
-                defaults={"company_name": company_name if requested_role == "recruiter" else ""},
+                defaults={"company_name": company_name},
             )
 
         # ── Issue GenHire JWT pair ────────────────────────────────────────────
@@ -478,9 +535,6 @@ class FirebaseLoginView(APIView):
                     "id": user.id,
                     "username": user.username,
                     "email": user.email,
-                    "role": user.role,
-                    "is_recruiter_verified": user.is_recruiter_verified,
-                    "is_candidate_verified": user.is_candidate_verified,
                 },
             }
         )

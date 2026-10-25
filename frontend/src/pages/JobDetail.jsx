@@ -29,8 +29,6 @@ export default function JobDetail() {
     setApplying(true);
     try {
       const result = await applyToJob(id, file);
-      const isSelected = result.status === "selected";
-      const isRejected = result.status === "rejected";
       setOutcome({
         status: result.status,
         scorePercentage: result.score_percentage || Math.round((result.score || 0) * 100),
@@ -90,6 +88,13 @@ export default function JobDetail() {
               <span key={i} className="tag">{s.trim()}</span>
             ))}
           </div>
+
+          {job.education_requirements && (
+            <>
+              <h4 style={{ marginTop: 18 }}>Education</h4>
+              <p className="muted text-sm">{job.education_requirements}</p>
+            </>
+          )}
 
           {job.good_to_have && (
             <>

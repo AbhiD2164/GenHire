@@ -36,6 +36,10 @@ export async function sendConnectionRequest(userId) {
   return res.data;
 }
 
+export async function withdrawConnectionRequest(connectionId) {
+  await client.delete(`/network/connections/request/${connectionId}/withdraw/`);
+}
+
 export async function respondConnectionRequest(connectionId, action) {
   const res = await client.post(`/network/connections/respond/${connectionId}/`, { action });
   return res.data;
@@ -88,8 +92,57 @@ export async function getCommunity(id) {
   return res.data;
 }
 
-export async function toggleCommunityMembership(communityId) {
-  const res = await client.post(`/network/communities/${communityId}/toggle-membership/`);
+export async function updateCommunityMembership(communityId, action) {
+  const res = await client.post(`/network/communities/${communityId}/toggle-membership/`, { action });
+  return res.data;
+}
+
+export async function getNotifications() {
+  const res = await client.get("/network/notifications/");
+  return res.data;
+}
+
+export async function markNotificationRead(notificationId) {
+  const res = await client.post(`/network/notifications/${notificationId}/read/`);
+  return res.data;
+}
+
+export async function markAllNotificationsRead() {
+  const res = await client.post("/network/notifications/read-all/");
+  return res.data;
+}
+
+export async function getCommunityMembershipRequests() {
+  const res = await client.get("/network/communities/membership-requests/");
+  return res.data;
+}
+
+export async function respondCommunityMembershipRequest(requestId, action) {
+  const res = await client.post(
+    `/network/communities/membership-requests/${requestId}/respond/`,
+    { action },
+  );
+  return res.data;
+}
+
+export async function getCommunityInvitations() {
+  const res = await client.get("/network/communities/invitations/");
+  return res.data;
+}
+
+export async function inviteToCommunity(communityId, userId) {
+  const res = await client.post("/network/communities/invitations/", {
+    community_id: communityId,
+    user_id: userId,
+  });
+  return res.data;
+}
+
+export async function respondCommunityInvitation(invitationId, action) {
+  const res = await client.post(
+    `/network/communities/invitations/${invitationId}/respond/`,
+    { action },
+  );
   return res.data;
 }
 

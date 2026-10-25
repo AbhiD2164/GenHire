@@ -34,7 +34,7 @@ function loadGoogleScript() {
   return googleScriptPromise;
 }
 
-export default function GoogleSignInButton({ onSuccess, role = "applicant" }) {
+export default function GoogleSignInButton({ onSuccess }) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
 
@@ -42,7 +42,7 @@ export default function GoogleSignInButton({ onSuccess, role = "applicant" }) {
     const id_token = credentialResponse?.credential;
     if (!id_token) return showToast("Google sign-in failed.", "error");
 
-    googleSignIn(id_token, role)
+    googleSignIn(id_token)
       .then((data) => {
         showToast("Signed in with Google.", "success");
         if (onSuccess) onSuccess(data);

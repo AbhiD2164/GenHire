@@ -18,29 +18,3 @@
   box-shadow: var(--shadow-lg);
 }
 .auth-card-wide { max-width: 500px; }
-
-.role-toggle {
-  display: flex;
-  gap: 8px;
-}
-.role-option {
-  flex: 1;
-  padding: 12px;
-  border: 1.5px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  font-weight: 600;
-  font-size: 14px;
-  color: var(--slate);
-  transition: all 0.18s ease;
-}
-.role-option:hover {
-  border-color: var(--brand);
-  color: var(--ink);
-}
-.role-option.active {
-  border-color: var(--brand-strong);
-  background: #E0F2FE;
-  color: var(--brand-strong);
-  font-weight: 700;
-}

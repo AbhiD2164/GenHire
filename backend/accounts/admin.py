@@ -5,9 +5,8 @@ from .models import CustomUser, Profile, WorkExperience
 
 @admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
-    list_display = ("username", "email", "role", "is_staff")
-    fieldsets = UserAdmin.fieldsets + (("Role", {"fields": ("role",)}),)
-    add_fieldsets = UserAdmin.add_fieldsets + (("Role", {"fields": ("role", "email")}),)
+    list_display = ("username", "email", "is_staff")
+    add_fieldsets = UserAdmin.add_fieldsets + (("Personal info", {"fields": ("email",)}),)
 
 
 class WorkExperienceInline(admin.TabularInline):

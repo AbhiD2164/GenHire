@@ -25,7 +25,7 @@ const INDUSTRIES = [
 const initial = {
   title: "", company_name: "", industry: "information_technology",
   job_type: "full_time", work_mode: "onsite", location: "",
-  description: "", skills_required: "", good_to_have: "",
+  description: "", skills_required: "", good_to_have: "", education_requirements: "",
   min_experience_years: 0, max_experience_years: "",
   salary_min: "", salary_max: "",
 };
@@ -67,7 +67,7 @@ export default function CreateJob() {
       <span className="eyebrow">New posting</span>
       <h1>Post a job, any role</h1>
       <p className="muted" style={{ marginBottom: 28 }}>
-        Define the skills and experience you need — our screener handles candidates from any industry.
+        Define the skills and experience you need — resume matching supports applicants across industries.
       </p>
 
       <form onSubmit={handleSubmit} className="card form-card">
@@ -135,6 +135,15 @@ export default function CreateJob() {
         <div className="field">
           <label>Good to have</label>
           <input value={form.good_to_have} onChange={(e) => update("good_to_have", e.target.value)} placeholder="Comma-separated, optional" />
+        </div>
+
+        <div className="field">
+          <label>Education requirements (optional)</label>
+          <input
+            value={form.education_requirements}
+            onChange={(e) => update("education_requirements", e.target.value)}
+            placeholder="e.g. Bachelor's degree in accounting or equivalent"
+          />
         </div>
 
         <div className="field-row">

@@ -51,13 +51,51 @@ export async function deleteExperience(id) {
   await client.delete(`/auth/experience/${id}/`);
 }
 
-export async function searchCandidates(params) {
-  const res = await client.get("/auth/candidates/search/", { params });
+export async function listEducation() {
+  const res = await client.get("/auth/education/");
   return res.data;
 }
 
-export async function googleSignIn(id_token, role = "applicant") {
-  const res = await client.post("/auth/google/", { id_token, role });
+export async function addEducation(payload) {
+  const res = await client.post("/auth/education/", payload);
+  return res.data;
+}
+
+export async function updateEducation(id, payload) {
+  const res = await client.patch(`/auth/education/${id}/`, payload);
+  return res.data;
+}
+
+export async function deleteEducation(id) {
+  await client.delete(`/auth/education/${id}/`);
+}
+
+export async function listAchievements() {
+  const res = await client.get("/auth/achievements/");
+  return res.data;
+}
+
+export async function addAchievement(payload) {
+  const res = await client.post("/auth/achievements/", payload);
+  return res.data;
+}
+
+export async function updateAchievement(id, payload) {
+  const res = await client.patch(`/auth/achievements/${id}/`, payload);
+  return res.data;
+}
+
+export async function deleteAchievement(id) {
+  await client.delete(`/auth/achievements/${id}/`);
+}
+
+export async function searchPeople(params) {
+  const res = await client.get("/auth/people/search/", { params });
+  return res.data;
+}
+
+export async function googleSignIn(id_token) {
+  const res = await client.post("/auth/google/", { id_token });
   if (res.data.access && res.data.refresh) setTokens({ access: res.data.access, refresh: res.data.refresh });
   return res.data;
 }
@@ -78,8 +116,8 @@ export async function confirmEmailVerification(email, code) {
   return res.data;
 }
 
-export async function passwordResetRequest(email, frontendUrl) {
-  const res = await client.post("/auth/password-reset/", { email, frontend_url: frontendUrl });
+export async function passwordResetRequest(email) {
+  const res = await client.post("/auth/password-reset/", { email });
   return res.data;
 }
 

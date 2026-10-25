@@ -4,9 +4,11 @@ import {
   getConversations,
   getConversationMessages,
   sendMessage,
+  getCommunity,
   getCommunities,
   getCommunityMessages,
   sendCommunityMessage,
+  updateCommunityMembership,
   myConnections,
 } from "../api/network";
 import { useAuth } from "../context/AuthContext";
@@ -18,8 +20,8 @@ export default function Messages() {
   const directPartnerId = searchParams.get("to");
   const directCommunityId = searchParams.get("community");
 
-  // Category Tab: 'personal' (Direct Messages) or 'groups' (Communities & Groups)
-  const [channelType, setChannelType] = useState(directCommunityId ? "groups" : "personal");
+  // Category tab: direct messages or community messages.
+  const [channelType, setChannelType] = useState(directCommunityId ? "communities" : "personal");
 
   // Personal Direct Chats state
   const [conversations, setConversations] = useState([]);
@@ -32,7 +34,7 @@ export default function Messages() {
   const [connections, setConnections] = useState([]);
   const [showComposeModal, setShowComposeModal] = useState(false);
 
-  // Communities & Groups state
+  // Community messaging state
   const [communities, setCommunities] = useState([]);
   const [selectedCommunityId, setSelectedCommunityId] = useState(() => {
     if (!directCommunityId) return null;
@@ -63,11 +65,13 @@ export default function Messages() {
     async function loadThreads() {
       setLoadingThreads(true);
       try {
-        const [convData, commData, connData] = await Promise.all([
+        const [convData, communityData, connData] = await Promise.all([
           getConversations().catch(() => []),
           getCommunities().catch(() => []),
           myConnections().catch(() => ({ connections: [] })),
         ]);
+        const commData = (Array.isArray(communityData) ? communityData : communityData?.results || [])
+          .filter((community) => community.is_member || community.community_type === "public");
 
         setConversations(convData || []);
         setCommunities(commData || []);
@@ -103,7 +107,7 @@ export default function Messages() {
             if (found) setActivePartner(found);
           }
         } else {
-          // Groups channel
+          // Community channel
           let targetComm = null;
           if (directCommunityId && commData && commData.length > 0) {
             let parsed = parseInt(directCommunityId);
@@ -111,7 +115,7 @@ export default function Messages() {
               parsed = parseInt(directCommunityId.replace("curated-", ""));
             }
             if (!isNaN(parsed)) {
-              targetComm = commData.find((c) => c.id === parsed) || commData[parsed - 1] || null;
+              targetComm = commData.find((c) => c.id === parsed) || null;
             }
             if (!targetComm) {
               targetComm = commData.find(
@@ -120,13 +124,20 @@ export default function Messages() {
                   c.name.toLowerCase().includes(directCommunityId.toLowerCase())
               );
             }
+            if (!targetComm && !isNaN(parsed)) {
+              try {
+                targetComm = await getCommunity(parsed);
+              } catch (error) {
+                console.error("Could not load the requested community.", error);
+              }
+            }
           }
 
-          if (!targetComm && selectedCommunityId && commData) {
+          if (!targetComm && !directCommunityId && selectedCommunityId && commData) {
             targetComm = commData.find((c) => c.id === selectedCommunityId);
           }
 
-          if (!targetComm && commData && commData.length > 0) {
+          if (!targetComm && !directCommunityId && commData && commData.length > 0) {
             targetComm = commData[0];
           }
 
@@ -142,7 +153,7 @@ export default function Messages() {
       }
     }
     loadThreads();
-  }, [channelType, directPartnerId, directCommunityId, profile?.user_id]);
+  }, [channelType, directPartnerId, directCommunityId, profile?.user_id, selectedCommunityId, selectedPartnerId]);
 
   // Load direct messages
   const fetchPersonalMessages = useCallback(
@@ -172,24 +183,50 @@ export default function Messages() {
     async (commId) => {
       const numId = Number(commId);
       if (!commId || isNaN(numId) || numId <= 0) return;
+      if (activeCommunity?.community_type === "private" && !activeCommunity.is_member) return;
       setLoadingChat(true);
       try {
         const msgs = await getCommunityMessages(numId);
         setCommunityMessages(msgs || []);
       } catch {
-        showToast("Could not load community group messages.", "error");
+        showToast("Could not load community messages.", "error");
       } finally {
         setLoadingChat(false);
       }
     },
-    [showToast]
+    [showToast, activeCommunity]
   );
 
   useEffect(() => {
-    if (channelType === "groups" && selectedCommunityId && !isNaN(Number(selectedCommunityId))) {
+    if (channelType === "communities" && selectedCommunityId && !isNaN(Number(selectedCommunityId))) {
       fetchCommunityMessages(selectedCommunityId);
     }
   }, [channelType, selectedCommunityId, fetchCommunityMessages]);
+
+  async function handleRequestCommunityAccess() {
+    if (!activeCommunity) return;
+    try {
+      const result = await updateCommunityMembership(activeCommunity.id, "join");
+      const updated = {
+        ...activeCommunity,
+        is_member: result.joined,
+        join_request_status: result.join_request_status,
+        members_count: result.members_count,
+      };
+      setActiveCommunity(updated);
+      setCommunities((previous) => previous.map((community) =>
+        community.id === updated.id ? updated : community
+      ));
+      showToast(
+        result.join_request_status === "pending"
+          ? "Join request sent for admin approval."
+          : "Community membership updated.",
+        "success",
+      );
+    } catch (err) {
+      showToast(err?.response?.data?.detail || "Could not request community access.", "error");
+    }
+  }
 
   // Send Direct Message
   async function handleSendPersonal(e) {
@@ -240,7 +277,7 @@ export default function Messages() {
         <div>
           <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>Messaging</h2>
           <p className="text-xs muted" style={{ margin: "2px 0 0" }}>
-            Direct conversations and community group discussions
+            Direct messages and community discussions
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -272,13 +309,13 @@ export default function Messages() {
               Direct Messages
             </button>
             <button
-              className={`messages-tab-btn ${channelType === "groups" ? "active" : ""}`}
+              className={`messages-tab-btn ${channelType === "communities" ? "active" : ""}`}
               onClick={() => {
-                setChannelType("groups");
+                setChannelType("communities");
                 setSearchParams({});
               }}
             >
-              Communities & Groups
+              Communities
             </button>
           </div>
 
@@ -397,18 +434,6 @@ export default function Messages() {
                   <div className="message-thread-info">
                     <div className="message-thread-name">
                       <span>{comm.name}</span>
-                      <span
-                        className={`community-pill ${
-                          comm.community_type === "opensource"
-                            ? "opensource"
-                            : comm.community_type === "private"
-                            ? "private"
-                            : "public"
-                        }`}
-                        style={{ fontSize: 9 }}
-                      >
-                        {comm.community_type === "opensource" ? "OS" : comm.community_type}
-                      </span>
                     </div>
                     <p className="message-thread-snippet">
                       {comm.description || `${comm.members_count || 1} members active`}
@@ -514,6 +539,21 @@ export default function Messages() {
                 </button>
               </div>
             )
+          ) : selectedCommunityId && activeCommunity?.community_type === "private" && !activeCommunity?.is_member ? (
+            <div className="community-access-prompt">
+              <div className="community-icon" aria-hidden="true">🔒</div>
+              <h3>{activeCommunity?.name || "Private community"}</h3>
+              <p className="text-sm muted">
+                This community's messages are only visible to approved members.
+              </p>
+              {activeCommunity?.join_request_status === "pending" ? (
+                <button className="btn btn-outline" disabled>Request pending</button>
+              ) : (
+                <button className="btn btn-primary" onClick={handleRequestCommunityAccess}>
+                  Request to join
+                </button>
+              )}
+            </div>
           ) : selectedCommunityId ? (
             <>
               <div className="messages-chat-header">
@@ -528,23 +568,9 @@ export default function Messages() {
                     <strong style={{ fontSize: 15, display: "block", color: "var(--ink)" }}>
                       {activeCommunity?.name || "Community Channel"}
                     </strong>
-                    <span className="text-xs muted">
-                      {activeCommunity?.community_type === "opensource"
-                        ? "Open-Source Community Channel"
-                        : "Group Discussion"}{" "}
-                      • {activeCommunity?.members_count || 1} members
-                    </span>
+                    <span className="text-xs muted">{activeCommunity?.members_count || 0} members</span>
                   </div>
                 </div>
-                <span
-                  className={`community-pill ${
-                    activeCommunity?.community_type === "opensource"
-                      ? "opensource"
-                      : "public"
-                  }`}
-                >
-                  {activeCommunity?.community_type?.toUpperCase()}
-                </span>
               </div>
 
               {/* Group Message Stream */}
@@ -585,29 +611,37 @@ export default function Messages() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Group Composer */}
-              <form onSubmit={handleSendCommunity} className="messages-composer-bar">
-                <input
-                  type="text"
-                  className="input"
-                  placeholder={`Post message to #${activeCommunity?.name || "community"}...`}
-                  value={communityText}
-                  onChange={(e) => setCommunityText(e.target.value)}
-                  style={{ flex: 1 }}
-                />
-                <button
-                  type="submit"
-                  className="btn btn-primary btn-sm"
-                  disabled={sending || !communityText.trim()}
-                >
-                  {sending ? "Posting..." : "Post Message"}
-                </button>
-              </form>
+              {activeCommunity?.is_member ? (
+                <form onSubmit={handleSendCommunity} className="messages-composer-bar">
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder={`Post message to #${activeCommunity?.name || "community"}...`}
+                    value={communityText}
+                    onChange={(e) => setCommunityText(e.target.value)}
+                    style={{ flex: 1 }}
+                  />
+                  <button
+                    type="submit"
+                    className="btn btn-primary btn-sm"
+                    disabled={sending || !communityText.trim()}
+                  >
+                    {sending ? "Posting..." : "Post Message"}
+                  </button>
+                </form>
+              ) : (
+                <div className="community-join-composer">
+                  <span className="text-sm muted">Join this community to take part in the discussion.</span>
+                  <button className="btn btn-primary btn-sm" onClick={handleRequestCommunityAccess}>
+                    Join community
+                  </button>
+                </div>
+              )}
             </>
           ) : (
             <div style={{ margin: "auto", textAlign: "center", padding: 40 }} className="muted">
               <h4>No channel selected</h4>
-              <p className="text-sm">Choose a community from the left to read and send group messages.</p>
+              <p className="text-sm">Choose a community from the left to read and send messages.</p>
             </div>
           )}
         </div>

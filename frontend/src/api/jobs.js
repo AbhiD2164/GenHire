@@ -52,8 +52,8 @@ export async function jobApplications(jobId, statusFilter) {
   return res.data;
 }
 
-export async function recruiterDashboard() {
-  const res = await client.get("/jobs/recruiter/dashboard/");
+export async function myPostedJobs() {
+  const res = await client.get("/jobs/my-posted-jobs/");
   return res.data;
 }
 
@@ -62,6 +62,11 @@ export async function applicationDecision(applicationId, { action, reason }) {
     action,
     reason,
   });
+  return res.data;
+}
+
+export async function sendApplicationInvitation(applicationId, { type, message }) {
+  const res = await client.post(`/jobs/applications/${applicationId}/invite/`, { type, message });
   return res.data;
 }
 

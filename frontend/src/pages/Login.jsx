@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { firebaseSignIn } from "../api/auth";
 import { loginWithFirebaseGoogle } from "../utils/firebase";
 
 export default function Login() {
@@ -10,7 +9,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const { login, refreshProfile } = useAuth();
+  const { login, loginWithFirebase } = useAuth();
   const { showToast } = useToast();
   const navigate = useNavigate();
 
@@ -33,8 +32,7 @@ export default function Login() {
     setGoogleLoading(true);
     try {
       const { idToken } = await loginWithFirebaseGoogle();
-      await firebaseSignIn({ id_token: idToken });
-      await refreshProfile();
+      await loginWithFirebase({ id_token: idToken });
       showToast("Signed in successfully with Google!", "success");
       navigate("/feed");
     } catch (err) {

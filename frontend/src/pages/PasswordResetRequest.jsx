@@ -11,11 +11,10 @@ export default function PasswordResetRequest() {
     e.preventDefault();
     setLoading(true);
     try {
-      const frontendUrl = window.location.origin + "/reset-password";
-      await passwordResetRequest(email, frontendUrl);
+      await passwordResetRequest(email.trim());
       showToast("If an account exists, a reset email was sent.", "success");
-    } catch {
-      showToast("Could not send reset email.", "error");
+    } catch (err) {
+      showToast(err.response?.data?.detail || "Could not send reset email.", "error");
     } finally {
       setLoading(false);
     }
@@ -29,7 +28,7 @@ export default function PasswordResetRequest() {
         <form onSubmit={handleSubmit} style={{ marginTop: 18 }}>
           <div className="field">
             <label>Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
           </div>
           <button className="btn btn-primary btn-block" type="submit" disabled={loading}>{loading ? "Sending…" : "Send reset link"}</button>
         </form>

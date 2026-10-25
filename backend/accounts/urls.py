@@ -3,7 +3,9 @@ from rest_framework_simplejwt.views import TokenRefreshView
 from .views import (
     GoogleOAuthView, FirebaseLoginView, LoginView, PasswordResetConfirmView, PasswordResetRequestView, SignupView, MeView, PublicProfileView,
     EmailVerificationRequestView, EmailVerificationConfirmView,
-    WorkExperienceListCreateView, WorkExperienceDetailView, CandidateSearchView,
+    WorkExperienceListCreateView, WorkExperienceDetailView,
+    EducationListCreateView, EducationDetailView,
+    AchievementListCreateView, AchievementDetailView, PeopleSearchView,
 )
 
 urlpatterns = [
@@ -15,7 +17,12 @@ urlpatterns = [
     path("profile/<int:user_id>/", PublicProfileView.as_view(), name="public_profile"),
     path("experience/", WorkExperienceListCreateView.as_view(), name="experience_list"),
     path("experience/<int:pk>/", WorkExperienceDetailView.as_view(), name="experience_detail"),
-    path("candidates/search/", CandidateSearchView.as_view(), name="candidate_search"),
+    path("education/", EducationListCreateView.as_view(), name="education_list"),
+    path("education/<int:pk>/", EducationDetailView.as_view(), name="education_detail"),
+    path("achievements/", AchievementListCreateView.as_view(), name="achievement_list"),
+    path("achievements/<int:pk>/", AchievementDetailView.as_view(), name="achievement_detail"),
+    path("people/search/", PeopleSearchView.as_view(), name="people_search"),
+    path("candidates/search/", PeopleSearchView.as_view(), name="candidate_search_compat"),
     path("password-reset/", PasswordResetRequestView.as_view(), name="password_reset"),
     path("password-reset-confirm/", PasswordResetConfirmView.as_view(), name="password_reset_confirm"),
     path("google/", GoogleOAuthView.as_view(), name="google_oauth"),

@@ -19,6 +19,7 @@ class ParsedResume(models.Model):
     location_found = models.CharField(max_length=255, blank=True)
 
     extracted_skills = models.TextField(blank=True, help_text="Comma-separated skills found in resume")
+    extracted_education = models.TextField(blank=True)
     total_experience_months = models.PositiveIntegerField(default=0)
     experience_segments_json = models.TextField(
         blank=True, help_text="JSON list of {title, company, start, end, months} segments found"

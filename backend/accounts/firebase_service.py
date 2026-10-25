@@ -176,7 +176,7 @@ def send_firebase_password_reset(user, reset_url: str):
         message,
         settings.DEFAULT_FROM_EMAIL,
         [user.email],
-        fail_silently=True,
+        fail_silently=False,
     )
 
 

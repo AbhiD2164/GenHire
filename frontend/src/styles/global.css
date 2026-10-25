@@ -8,13 +8,13 @@
   --paper-raised: #FFFFFF;   /* Pure White Cards */
   
   /* Cool Color Palette (Cyan / Sapphire / Indigo) */
-  --brand: #0EA5E9;          /* Electric Cyan */
-  --brand-strong: #0284C7;   /* Deep Sapphire Cyan */
-  --brand-indigo: #2563EB;   /* Royal Sapphire Blue */
-  --accent: #06B6D4;         /* Vibrant Ice Teal */
-  --cool-gradient: linear-gradient(135deg, #0EA5E9 0%, #2563EB 100%);
-  --cool-gradient-hover: linear-gradient(135deg, #0284C7 0%, #1D4ED8 100%);
-  --cool-glow: rgba(14, 165, 233, 0.16);
+  --brand: #0F766E;          /* GenHire deep teal */
+  --brand-strong: #155E75;   /* Blue-teal */
+  --brand-indigo: #3157A4;   /* Slate sapphire */
+  --accent: #38BDF8;         /* Clear sky accent */
+  --cool-gradient: linear-gradient(135deg, #0F766E 0%, #3157A4 100%);
+  --cool-gradient-hover: linear-gradient(135deg, #115E59 0%, #243F80 100%);
+  --cool-glow: rgba(15, 118, 110, 0.16);
 
   --slate: #64748B;          /* Muted Text */
   --slate-light: #94A3B8;    /* Extra Soft Muted */
@@ -41,6 +41,8 @@
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
+  --radius-card: var(--radius-lg);
+  --muted: var(--slate);
 
   --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
   --shadow-md: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);

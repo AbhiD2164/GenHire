@@ -4,29 +4,23 @@ from django.utils import timezone
 
 
 class CustomUser(AbstractUser):
-    ROLE_CHOICES = (
-        ("applicant", "Applicant"),
-        ("recruiter", "Recruiter"),
-    )
     email = models.EmailField(unique=True)
-    role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="applicant")
+    legacy_role = models.CharField(max_length=20, blank=True, default="")
     email_verified = models.BooleanField(default=False)
     phone_number = models.CharField(max_length=30, blank=True)
 
-    # Verification fields
     company_name = models.CharField(max_length=255, blank=True)
     company_website = models.CharField(max_length=255, blank=True)
-    is_recruiter_verified = models.BooleanField(default=False)
-    recruiter_verification_notes = models.TextField(blank=True)
-
-    is_candidate_verified = models.BooleanField(default=False)
-    candidate_verification_notes = models.TextField(blank=True)
+    legacy_is_recruiter_verified = models.BooleanField(default=False)
+    legacy_recruiter_verification_notes = models.TextField(blank=True)
+    legacy_is_candidate_verified = models.BooleanField(default=False)
+    legacy_candidate_verification_notes = models.TextField(blank=True)
 
     USERNAME_FIELD = "username"
     REQUIRED_FIELDS = ["email"]
 
     def __str__(self):
-        return f"{self.get_full_name() or self.username} ({self.role})"
+        return self.get_full_name() or self.username
 
 
 class EmailVerificationCode(models.Model):
@@ -97,3 +91,36 @@ class WorkExperience(models.Model):
 
     class Meta:
         ordering = ["-start_year", "-start_month"]
+
+
+class Education(models.Model):
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="education")
+    institution = models.CharField(max_length=255)
+    institution_url = models.URLField(blank=True)
+    degree = models.CharField(max_length=255, blank=True)
+    field_of_study = models.CharField(max_length=255, blank=True)
+    start_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    end_year = models.PositiveSmallIntegerField(null=True, blank=True)
+    is_current = models.BooleanField(default=False)
+    description = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-start_year", "-id"]
+
+    def __str__(self):
+        return f"{self.degree or 'Education'} at {self.institution}"
+
+
+class Achievement(models.Model):
+    profile = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="achievements")
+    title = models.CharField(max_length=255)
+    issuer = models.CharField(max_length=255, blank=True)
+    year = models.PositiveSmallIntegerField(null=True, blank=True)
+    description = models.TextField(blank=True)
+    credential_url = models.URLField(blank=True)
+
+    class Meta:
+        ordering = ["-year", "-id"]
+
+    def __str__(self):
+        return self.title

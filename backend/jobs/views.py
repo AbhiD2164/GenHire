@@ -9,13 +9,9 @@ from .serializers import (
     JobSerializer, JobWriteSerializer, ApplicationSerializer, ApplicationCandidateView,
 )
 from ats.engine import process_resume
-from ats.rabbitmq_cache import get_cached_suggestions, compute_runtime_suggestions
+from ats.rabbitmq_cache import compute_runtime_suggestions
 from accounts.firebase_service import send_immediate_application_result_email
-
-
-class IsRecruiter(permissions.BasePermission):
-    def has_permission(self, request, view):
-        return request.user.is_authenticated
+from network.models import Notification
 
 
 class JobListCreateView(generics.ListCreateAPIView):
@@ -120,9 +116,26 @@ class ApplyToJobView(APIView):
             )
 
         application = Application.objects.create(job=job, applicant=request.user, resume=resume)
+        Notification.objects.create(
+            recipient=job.created_by,
+            actor=request.user,
+            notification_type="job_application",
+            title="New job application",
+            body=f"{request.user.get_full_name() or request.user.username} applied for {job.title}.",
+            target_url=f"/jobs/{job.id}/applications",
+        )
 
         # Process resume, perform security check, score and email immediately
         process_resume(application)
+        if application.status != "applied":
+            Notification.objects.create(
+                recipient=application.applicant,
+                actor=job.created_by,
+                notification_type="application_update",
+                title="Your application status changed",
+                body=f"Your application for {job.title} is now {application.get_status_display().lower()}.",
+                target_url="/dashboard",
+            )
 
         return Response(
             ApplicationCandidateView(application).data,
@@ -186,7 +199,7 @@ class JobApplicationsView(generics.ListAPIView):
     Recruiter view of applicants for a job posted by the recruiter.
     """
     serializer_class = ApplicationSerializer
-    permission_classes = [permissions.IsAuthenticated, IsRecruiter]
+    permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
         job_id = self.kwargs["job_id"]
@@ -201,13 +214,13 @@ class JobApplicationsView(generics.ListAPIView):
         return qs.order_by("-score", "-created_at")
 
 
-class RecruiterApplicationDecisionView(APIView):
+class JobApplicationDecisionView(APIView):
     """
-    Allows recruiter to accept/select or reject an application with custom reason.
+    Allows a job owner to select or reject an application with a custom reason.
     Immediately updates application status and sends result email to candidate
     to eliminate communication delays.
     """
-    permission_classes = [permissions.IsAuthenticated, IsRecruiter]
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, application_id):
         application = Application.objects.select_related("job", "applicant").filter(id=application_id).first()
@@ -222,7 +235,7 @@ class RecruiterApplicationDecisionView(APIView):
 
         if action == "select":
             application.status = "selected"
-            application.feedback = f"Selected by recruiter: {reason or 'Strong candidate qualifications'}"
+            application.feedback = f"Selected by job owner: {reason or 'Strong qualifications'}"
             application.candidate_message = f"Congratulations! You were selected by the hiring team at {application.job.company_name}."
             application.rejection_stage = ""
             application.rejection_reason = ""
@@ -230,12 +243,21 @@ class RecruiterApplicationDecisionView(APIView):
             application.status = "rejected"
             application.rejection_stage = "rejected_by_recruiter"
             application.rejection_reason = reason or "Better skills in other candidates were found"
-            application.feedback = f"Rejected by recruiter: {application.rejection_reason}"
-            application.candidate_message = f"Application rejected by recruiter: {application.rejection_reason}."
+            application.feedback = f"Rejected by job owner: {application.rejection_reason}"
+            application.candidate_message = f"Application update: {application.rejection_reason}."
         else:
             return Response({"detail": "Invalid action. Choose 'select' or 'reject'."}, status=status.HTTP_400_BAD_REQUEST)
 
+        application.human_reviewed = True
         application.save()
+        Notification.objects.create(
+            recipient=application.applicant,
+            actor=request.user,
+            notification_type="application_update",
+            title="Your application was updated",
+            body=f"Your application for {application.job.title} is now {application.get_status_display().lower()}.",
+            target_url="/dashboard",
+        )
 
         # Send immediate email notification to candidate
         send_immediate_application_result_email(application)
@@ -243,7 +265,55 @@ class RecruiterApplicationDecisionView(APIView):
         return Response(ApplicationSerializer(application).data)
 
 
-class RecruiterDashboardView(APIView):
+class ApplicationInvitationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request, application_id):
+        application = Application.objects.select_related("job", "applicant").filter(
+            id=application_id
+        ).first()
+        if not application:
+            return Response(
+                {"detail": "Application not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        if application.job.created_by_id != request.user.id and not request.user.is_staff:
+            raise PermissionDenied("You can only invite applicants to jobs you posted.")
+
+        invitation_type = request.data.get("type")
+        if invitation_type not in ("interview", "assessment"):
+            return Response(
+                {"detail": "type must be 'interview' or 'assessment'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        kind = "interview_invite" if invitation_type == "interview" else "assessment_invite"
+        title = "Interview invitation" if invitation_type == "interview" else "Assessment invitation"
+        message = str(request.data.get("message", "")).strip()
+        if not message:
+            return Response(
+                {"detail": "Please include the interview or assessment details."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(message) > 1500:
+            return Response(
+                {"detail": "Invitation details must be 1500 characters or fewer."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        notification = Notification.objects.create(
+            recipient=application.applicant,
+            actor=request.user,
+            notification_type=kind,
+            title=title,
+            body=f"{application.job.title}: {message}",
+            target_url="/dashboard",
+        )
+        return Response(
+            {"id": notification.id, "title": title, "body": notification.body},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class MyPostedJobsView(APIView):
     """Returns all jobs posted by the current user."""
     permission_classes = [permissions.IsAuthenticated]
 
@@ -262,15 +332,6 @@ class RuntimeSuggestionsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        cached = get_cached_suggestions(request.user.id)
-        if cached:
-            return Response({"suggestions": cached, "source": "cache"})
-
-        # Compute fresh suggestions
-        latest_app = Application.objects.filter(applicant=request.user).order_by("-created_at").first()
-        suggestions = compute_runtime_suggestions(
-            user=request.user,
-            applied_job=latest_app.job if latest_app else None,
-            resume_score=latest_app.score if latest_app else None,
-        )
-        return Response({"suggestions": suggestions, "source": "rabbitmq_computed"})
+        suggestions = compute_runtime_suggestions(request.user)
+        source = suggestions[0]["recommendation_method"] if suggestions else "none"
+        return Response({"suggestions": suggestions, "source": source})

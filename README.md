@@ -9,8 +9,8 @@ Built with **React + Vite** (frontend) and **Django REST Framework** (backend).
 
 | Feature | Detail |
 |---|---|
-| **Hard-gated ATS screening** | Resumes are parsed and scored on submit. Below-threshold applicants see "not suitable" and **never reach the recruiter's view** — not even in a "rejected" tab. |
-| **Any industry, any role** | Skills are recruiter-defined per job (comma-separated). Works for nursing, welding, finance, teaching, IT, sales — anything. No hardcoded taxonomy. |
+| **Resume screening** | Resumes are parsed and scored on submit using skills, experience, and role relevance. Job owners can review and update application decisions. |
+| **Any industry, any role** | Skills and optional education requirements are defined per job. Matching works across nursing, welding, finance, teaching, IT, sales, and more. |
 | **No API key required** | All parsing is done with pure Python (pdfminer.six + python-docx + pycountry). Zero external API calls, zero cost per resume. |
 | **Structured experience extraction** | Parses month/year date ranges from resumes, merges overlapping jobs, computes total career months, and compares against the job's min/max requirement window. |
 | **Location extraction** | Detects city/country from resume header using 200+ major cities, pycountry country names, and Indian state names — no geocoding API needed. |
@@ -30,7 +30,9 @@ GenHire/
 │   │   ├── text_extraction.py     # PDF + DOCX text extraction
 │   │   ├── experience_extraction.py # Month/year date range parsing
 │   │   ├── skill_extraction.py    # Generic skill matching
+│   │   ├── matching_features.py   # Resume/job features for recommendations
 │   │   └── location_extraction.py # City/country detection
+│   ├── ml/           # Supervised job-matching trainer
 │   ├── network/      # Feed, posts, likes, comments, connections
 │   └── GenHire/      # Django project settings + root URLs
 └── frontend/         # React + Vite SPA
@@ -107,41 +109,55 @@ The app will be available at `http://localhost:5173`
 ## Quick start walkthrough
 
 1. Open `http://localhost:5173` and click **Sign up**
-2. Create a **Recruiter** account, then log in
-3. Go to **Jobs → Post a job**, fill in any industry (e.g. "Head Nurse, Healthcare") and paste comma-separated required skills (e.g. `nursing, patient care, CPR, EMR`)
-4. Log out, sign up as a **Job seeker**
-5. Browse jobs, click **Submit application**, upload a PDF or DOCX resume
-6. Instantly see **"Your application is sent successfully!"** or **"Oops! Your application is not suitable for this job role."**
-7. Log back in as the recruiter → **Dashboard → View applicants** — only passed candidates appear
+2. Create one professional account; no recruiter/job-seeker account type is needed
+3. Post a job from **Jobs → Post a job**, adding skills and optional education requirements
+4. A different member can apply with a PDF or DOCX resume
+5. The job owner can review applications, update decisions, and invite applicants to interviews or assessments
+6. Members can manage their professional profile, connections, and application updates from the dashboard
 
 ---
 
 ## ATS scoring explained
 
-The ATS engine runs synchronously when a candidate submits — no background workers needed.
+The ATS engine runs synchronously when a member applies — no background workers needed.
 
 ### Score formula
 
 ```
-final_score = (skill_score × 0.7) + (experience_score × 0.3)
+final_score = (skill_score × 0.60) + (experience_score × 0.25) + (role_relevance × 0.15)
 ```
 
-**Skill score** — required skills are weighted 2×, good-to-have 1×. The engine uses a synonym table (e.g. "NodeJS" = "Node.js" = "Node") plus word-boundary regex for skills not in the table, so arbitrary skills from any domain work out of the box.
+**Skill score** — required skills are weighted 2×, good-to-have 1×. The engine uses a synonym table (e.g. "NodeJS" = "Node.js" = "Node") plus word-boundary matching for job-defined skills.
 
-**Experience score** — candidate's merged total months vs job's minimum:
+**Experience score** — applicant's merged total months compared with the job's minimum:
 - Meets/exceeds minimum → 1.0
 - Below minimum → linear partial credit (months / min_months)
-- No minimum set → always 1.0
+- No minimum set → 1.0
+
+**Role relevance** — text similarity between the resume and the job title, description, and requirements.
 
 ### Decision thresholds (configurable in `settings.py`)
 
-| Score range | Status | Recruiter sees? | Candidate message |
+| Score range | Status | Job owner sees? | Applicant message |
 |---|---|---|---|
-| ≥ 0.70 | **Selected** | ✅ Yes | "Your application is sent successfully!" |
-| 0.40 – 0.69 | **Consider** | ✅ Yes | "Your application is sent successfully!" |
-| < 0.40 | **Rejected** | ❌ Never | "Oops! Your application is not suitable for this job role." |
+| ≥ 0.80 | **Selected** | Yes | Strong-match application update |
+| 0.60 – 0.79 | **Applied** | Yes | Application received and in review |
+| < 0.60 | **Rejected** | Yes | Application update with the score/reason |
 
-Change thresholds by editing `ATS_SELECT_THRESHOLD` and `ATS_CONSIDER_THRESHOLD` in `backend/GenHire/settings.py`.
+Thresholds are configured with `ATS_PERFECT_THRESHOLD` and `ATS_PARTIAL_THRESHOLD` in `backend/GenHire/settings.py`. Automated outcomes are not used as training labels.
+
+## Job recommendation model
+
+Recommendations combine profile/resume text with structured skill coverage, experience duration, and education-requirement features. Before a trained model is available, the app clearly identifies its content-similarity fallback.
+
+To train the supervised model after collecting enough human-reviewed outcomes, run:
+
+```bash
+cd backend
+python manage.py train_recommender
+```
+
+Training uses only explicit job-owner selections/rejections, not automated ATS outcomes or synthetic negatives. It requires at least 20 reviewed applications, at least five outcomes of each class, at least five distinct applicants, and a user-separated validation split. The command reports a clear error instead of writing an artifact when those requirements are not met. A successful run stores a versioned artifact in `ML_MODEL_DIR`; restart the backend service after training so workers load it.
 
 ---
 
@@ -154,12 +170,14 @@ Change thresholds by editing `ATS_SELECT_THRESHOLD` and `ATS_CONSIDER_THRESHOLD`
 | GET/PATCH | `/api/auth/me/` | View/edit own profile |
 | GET | `/api/auth/profile/<id>/` | View public profile |
 | GET/POST | `/api/auth/experience/` | List/add work experience |
-| GET | `/api/auth/candidates/search/` | Search candidates (recruiter) |
+| GET | `/api/auth/people/search/` | Search people by skills, location, and experience |
+| GET | `/api/auth/candidates/search/` | Compatibility alias for people search |
 | GET/POST | `/api/jobs/` | List jobs / post a job |
 | GET | `/api/jobs/<id>/` | Job detail |
 | POST | `/api/jobs/<id>/apply/` | Apply with resume (multipart) |
-| GET | `/api/jobs/<id>/applications/` | View applicants (recruiter, hard-gated) |
-| GET | `/api/jobs/my-applications/` | Applicant's own history |
+| GET | `/api/jobs/<id>/applications/` | View applications for a job you posted |
+| GET | `/api/jobs/my-applications/` | View your application history |
+| GET | `/api/jobs/my-posted-jobs/` | View jobs you posted |
 | GET/POST | `/api/network/feed/` | Read feed / create post |
 | POST | `/api/network/posts/<id>/like/` | Toggle like |
 | GET/POST | `/api/network/posts/<id>/comments/` | Read / add comments |

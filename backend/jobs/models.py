@@ -46,6 +46,7 @@ class Job(models.Model):
     location = models.CharField(max_length=255, blank=True, help_text="City, State/Country, or 'Remote'")
 
     description = models.TextField()
+    education_requirements = models.CharField(max_length=500, blank=True)
 
     # Experience requirement, stored as a min/max range in months so the
     # parser's extracted candidate experience can be compared numerically.
@@ -101,6 +102,7 @@ class Application(models.Model):
     rejection_reason = models.TextField(blank=True, help_text="Detailed stage reason for rejection")
     feedback = models.TextField(blank=True, help_text="Internal feedback shown to recruiter")
     candidate_message = models.CharField(max_length=255, blank=True, help_text="Message shown to the candidate")
+    human_reviewed = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

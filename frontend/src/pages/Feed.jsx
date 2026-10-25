@@ -1,19 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   getFeed, createPost, toggleLike, addComment, getConversations,
-  toggleCommunityMembership,
+  updateCommunityMembership,
 } from "../api/network";
 import { listJobs } from "../api/jobs";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 
-const TRENDING_HASHTAGS = ["#all", "#hiring", "#careers", "#projects", "#tech", "#healthcare", "#finance", "#engineering"];
-
 const NEWS_STORIES = [
   { id: 1, title: "Global hiring trends indicate surge in specialized cross-industry skills", readers: "14,280 readers" },
   { id: 2, title: "Autonomous ATS screening adoption grows across engineering & healthcare", readers: "8,940 readers" },
-  { id: 3, title: "How verifiable corporate credentials eliminate fraudulent recruiters", readers: "5,320 readers" },
+  { id: 3, title: "How professional credentials build trust across a network", readers: "5,320 readers" },
   { id: 4, title: "Open-source developer communities shape next-gen architecture", readers: "3,110 readers" },
 ];
 
@@ -22,16 +20,15 @@ export default function Feed() {
   const [posts, setPosts] = useState([]);
   const [recommendedJobs, setRecommendedJobs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTag, setSelectedTag] = useState("#all");
+  const navigate = useNavigate();
   const [dockOpen, setDockOpen] = useState(false);
   const [recentConversations, setRecentConversations] = useState([]);
 
   const fetchFeed = useCallback(async () => {
     setLoading(true);
     try {
-      const params = selectedTag !== "#all" ? { hashtag: selectedTag.replace("#", "") } : {};
       const [feedData, jobsData, convsData] = await Promise.all([
-        getFeed(params),
+        getFeed(),
         listJobs().catch(() => ({ results: [] })),
         getConversations().catch(() => []),
       ]);
@@ -41,7 +38,7 @@ export default function Feed() {
     } finally {
       setLoading(false);
     }
-  }, [selectedTag]);
+  }, []);
 
   useEffect(() => {
     fetchFeed();
@@ -104,7 +101,7 @@ export default function Feed() {
               <span>👥</span> Network & Connections
             </Link>
             <Link to="/messages" className="sidebar-link-item">
-              <span>💬</span> Messages & Groups
+              <span>💬</span> Messages & Communities
             </Link>
             <Link to="/jobs" className="sidebar-link-item">
               <span>💼</span> Job Opportunities
@@ -119,31 +116,23 @@ export default function Feed() {
         <main className="feed-center">
           <StartPostBox onPosted={handleNewPost} />
 
-          {/* Hashtag Quick Filters */}
-          <div className="hashtag-filter-bar">
-            {TRENDING_HASHTAGS.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                className={`hashtag-pill ${selectedTag === tag ? "active" : ""}`}
-                onClick={() => setSelectedTag(tag)}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
-
           {loading ? (
             <div style={{ display: "flex", justifyContent: "center", padding: 60 }}>
               <div className="spinner" />
             </div>
           ) : posts.length === 0 ? (
             <div className="card empty-state" style={{ padding: 40, textAlign: "center" }}>
-              <h3>No posts matching {selectedTag}</h3>
-              <p className="muted">Be the first to share an update, job opportunity, or project with this hashtag.</p>
+              <h3>Your feed is ready for a first update</h3>
+              <p className="muted">Share an update, job opportunity, or project with your network.</p>
             </div>
           ) : (
-            posts.map((post) => <FeedPostCard key={post.id} post={post} onTagClick={(t) => setSelectedTag(t)} />)
+            posts.map((post) => (
+              <FeedPostCard
+                key={post.id}
+                post={post}
+                onTagClick={(tag) => navigate(`/search?q=${encodeURIComponent(tag)}`)}
+              />
+            ))
           )}
         </main>
 
@@ -279,10 +268,6 @@ function StartPostBox({ onPosted }) {
     }
   }
 
-  function appendHashtag(tag) {
-    setContent((prev) => (prev ? `${prev} ${tag} ` : `${tag} `));
-  }
-
   return (
     <div className="start-post-card">
       <div className="start-post-top">
@@ -290,22 +275,13 @@ function StartPostBox({ onPosted }) {
           {(profile?.full_name || profile?.username || "?")[0].toUpperCase()}
         </div>
         <button type="button" className="start-post-input" onClick={() => setOpen(true)}>
-          Start a post, share a project, or post #hiring...
+          Share an update with your professional network...
         </button>
       </div>
 
       <div className="start-post-actions">
-        <button type="button" className="post-action-btn" onClick={() => { setOpen(true); appendHashtag("#hiring"); }}>
-          <span style={{ color: "#0ea5e9" }}>💼</span> #Hiring
-        </button>
-        <button type="button" className="post-action-btn" onClick={() => { setOpen(true); appendHashtag("#projects"); }}>
-          <span style={{ color: "#10b981" }}>🚀</span> #Projects
-        </button>
-        <button type="button" className="post-action-btn" onClick={() => { setOpen(true); appendHashtag("#engineering"); }}>
-          <span style={{ color: "#6366f1" }}>⚙</span> #Engineering
-        </button>
         <button type="button" className="post-action-btn" onClick={() => setOpen(true)}>
-          <span style={{ color: "#f59e0b" }}>✍</span> Write Post
+          <span style={{ color: "#f59e0b" }}>✍</span> Write a post
         </button>
       </div>
 
@@ -326,21 +302,6 @@ function StartPostBox({ onPosted }) {
             }}
             autoFocus
           />
-
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", margin: "8px 0" }}>
-            <span className="text-xs muted" style={{ alignSelf: "center" }}>Add tag:</span>
-            {["#hiring", "#careers", "#projects", "#tech", "#healthcare", "#finance"].map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                className="tag text-xs"
-                style={{ cursor: "pointer", background: "#f1f5f9" }}
-                onClick={() => appendHashtag(tag)}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 }}>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} disabled={submitting}>
@@ -363,6 +324,7 @@ function FeedPostCard({ post, onTagClick }) {
   const [comments, setComments] = useState(post.comments || []);
   const [commentText, setCommentText] = useState("");
   const [joinedCommunity, setJoinedCommunity] = useState(post.community_joined_by_me);
+  const [joinRequestStatus, setJoinRequestStatus] = useState(post.community_join_request_status);
   const [joiningComm, setJoiningComm] = useState(false);
   const { showToast } = useToast();
 
@@ -379,9 +341,17 @@ function FeedPostCard({ post, onTagClick }) {
   async function handleJoinCommunity() {
     setJoiningComm(true);
     try {
-      const res = await toggleCommunityMembership(post.community);
+      const res = await updateCommunityMembership(post.community, "join");
       setJoinedCommunity(res.joined);
-      showToast(res.joined ? `Joined ${post.community_name}!` : `Left ${post.community_name}.`, "success");
+      setJoinRequestStatus(res.join_request_status);
+      showToast(
+        res.joined
+          ? `Joined ${post.community_name}!`
+          : res.join_request_status === "pending"
+            ? "Join request sent for admin approval."
+            : `Left ${post.community_name}.`,
+        "success",
+      );
     } catch {
       showToast("Could not update community membership.", "error");
     } finally {
@@ -438,24 +408,6 @@ function FeedPostCard({ post, onTagClick }) {
               <span style={{ fontSize: 13, fontWeight: 700, color: "#0369A1" }}>
                 {post.community_name}
               </span>
-              <span
-                style={{
-                  marginLeft: 6,
-                  fontSize: 10,
-                  fontWeight: 700,
-                  padding: "1px 6px",
-                  borderRadius: 999,
-                  background: post.community_type === "open_source" ? "#E0F2FE" : "#DCFCE7",
-                  color: post.community_type === "open_source" ? "#0369A1" : "#166534",
-                  textTransform: "uppercase",
-                }}
-              >
-                {post.community_type === "open_source"
-                  ? "Open Source"
-                  : post.community_type === "private_group"
-                  ? "Private"
-                  : "Public"}
-              </span>
               <p style={{ margin: 0, fontSize: 11.5, color: "#64748B" }}>
                 Post from a community you haven't joined yet
               </p>
@@ -466,9 +418,15 @@ function FeedPostCard({ post, onTagClick }) {
             className="btn btn-primary btn-sm"
             style={{ fontSize: 12, padding: "5px 14px", whiteSpace: "nowrap" }}
             onClick={handleJoinCommunity}
-            disabled={joiningComm}
+            disabled={joiningComm || joinRequestStatus === "pending"}
           >
-            {joiningComm ? "Joining..." : "+ Join Community"}
+            {joiningComm
+              ? "Sending..."
+              : joinRequestStatus === "pending"
+                ? "Request pending"
+                : post.community_type === "private"
+                  ? "Request to join"
+                  : "Join Community"}
           </button>
         </div>
       )}
@@ -494,7 +452,7 @@ function FeedPostCard({ post, onTagClick }) {
             to={`/messages?community=${post.community}`}
             style={{ marginLeft: "auto", fontSize: 11, color: "var(--brand-strong)" }}
           >
-            Group Chat →
+            Community chat →
           </Link>
         </div>
       )}

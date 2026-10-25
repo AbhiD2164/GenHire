@@ -14,7 +14,7 @@ from accounts.firebase_service import send_immediate_application_result_email
 from .engine import process_resume
 from .text_extraction import extract_resume_text
 from .skill_extraction import parse_skill_list, extract_present_skills, SKILL_SYNONYMS
-from .rabbitmq_cache import get_cached_suggestions, compute_runtime_suggestions
+from .rabbitmq_cache import compute_runtime_suggestions
 
 
 INDUSTRY_DOMAINS = {
@@ -222,18 +222,9 @@ class RecommendJobsView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        user = request.user
-        cached = get_cached_suggestions(user.id)
-        if cached:
-            return Response({"recommendations": cached, "source": "cache"})
-
-        latest_app = Application.objects.filter(applicant=user).order_by("-created_at").first()
-        suggestions = compute_runtime_suggestions(
-            user=user,
-            applied_job=latest_app.job if latest_app else None,
-            resume_score=latest_app.score if latest_app else None,
-        )
-        return Response({"recommendations": suggestions, "source": "computed"})
+        suggestions = compute_runtime_suggestions(request.user)
+        source = suggestions[0]["recommendation_method"] if suggestions else "none"
+        return Response({"recommendations": suggestions, "source": source})
 
 
 class AutoCreateResumeView(APIView):

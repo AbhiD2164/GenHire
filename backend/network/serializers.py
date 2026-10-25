@@ -1,5 +1,8 @@
 from rest_framework import serializers
-from .models import Post, Like, Comment, Connection, Message, Community, CommunityMessage
+from .models import (
+    Post, Like, Comment, Connection, Message, Community, CommunityMessage,
+    CommunityMembershipRequest, CommunityInvitation, Notification,
+)
 
 
 class CommentSerializer(serializers.ModelSerializer):
@@ -25,7 +28,6 @@ class CommentSerializer(serializers.ModelSerializer):
 
 class PostSerializer(serializers.ModelSerializer):
     author_name = serializers.SerializerMethodField()
-    author_role = serializers.CharField(source="author.role", read_only=True)
     author_headline = serializers.SerializerMethodField()
     author_avatar = serializers.SerializerMethodField()
     like_count = serializers.SerializerMethodField()
@@ -36,13 +38,14 @@ class PostSerializer(serializers.ModelSerializer):
     community_name = serializers.CharField(source="community.name", read_only=True, default=None)
     community_type = serializers.CharField(source="community.community_type", read_only=True, default=None)
     community_joined_by_me = serializers.SerializerMethodField()
+    community_join_request_status = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
         fields = [
-            "id", "author", "author_name", "author_role", "author_headline", "author_avatar",
+            "id", "author", "author_name", "author_headline", "author_avatar",
             "content", "hashtags", "community", "community_name", "community_type",
-            "community_joined_by_me",
+            "community_joined_by_me", "community_join_request_status",
             "image", "related_job", "related_job_title",
             "created_at", "updated_at", "like_count", "comment_count", "liked_by_me", "comments",
         ]
@@ -85,6 +88,15 @@ class PostSerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.community.members.filter(id=request.user.id).exists()
+
+    def get_community_join_request_status(self, obj):
+        request = self.context.get("request")
+        if not obj.community_id or not request or not request.user.is_authenticated:
+            return None
+        membership_request = CommunityMembershipRequest.objects.filter(
+            community=obj.community, user=request.user
+        ).first()
+        return membership_request.status if membership_request else None
 
 
 class ConnectionSerializer(serializers.ModelSerializer):
@@ -196,13 +208,15 @@ class CommunitySerializer(serializers.ModelSerializer):
     creator_name = serializers.SerializerMethodField()
     members_count = serializers.SerializerMethodField()
     is_member = serializers.SerializerMethodField()
+    join_request_status = serializers.SerializerMethodField()
+    pending_join_requests_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
         fields = [
             "id", "name", "slug", "description", "community_type",
             "creator", "creator_name", "members_count", "is_member",
-            "avatar", "created_at",
+            "join_request_status", "pending_join_requests_count", "avatar", "created_at",
         ]
         read_only_fields = ["creator", "created_at"]
 
@@ -217,3 +231,67 @@ class CommunitySerializer(serializers.ModelSerializer):
         if not request or not request.user.is_authenticated:
             return False
         return obj.members.filter(id=request.user.id).exists()
+
+    def get_join_request_status(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated:
+            return None
+        membership_request = CommunityMembershipRequest.objects.filter(
+            community=obj, user=request.user
+        ).first()
+        return membership_request.status if membership_request else None
+
+    def get_pending_join_requests_count(self, obj):
+        request = self.context.get("request")
+        if not request or not request.user.is_authenticated or obj.creator_id != request.user.id:
+            return 0
+        return obj.membership_requests.filter(status="pending").count()
+
+
+class CommunityMembershipRequestSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source="user.username", read_only=True)
+    full_name = serializers.SerializerMethodField()
+    community_name = serializers.CharField(source="community.name", read_only=True)
+
+    class Meta:
+        model = CommunityMembershipRequest
+        fields = [
+            "id", "community", "community_name", "user", "username", "full_name",
+            "status", "created_at",
+        ]
+
+    def get_full_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    actor_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id", "notification_type", "title", "body", "target_url",
+            "actor", "actor_name", "is_read", "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_actor_name(self, obj):
+        if not obj.actor:
+            return ""
+        return obj.actor.get_full_name() or obj.actor.username
+
+
+class CommunityInvitationSerializer(serializers.ModelSerializer):
+    community_name = serializers.CharField(source="community.name", read_only=True)
+    inviter_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommunityInvitation
+        fields = [
+            "id", "community", "community_name", "inviter", "inviter_name",
+            "status", "created_at",
+        ]
+        read_only_fields = fields
+
+    def get_inviter_name(self, obj):
+        return obj.inviter.get_full_name() or obj.inviter.username

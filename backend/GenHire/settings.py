@@ -111,6 +111,7 @@ MEDIA_ROOT = BASE_DIR / "media"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "accounts.CustomUser"
+PASSWORD_RESET_TIMEOUT = 60 * 60 * 24
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 
 # Emails: use SMTP in deployment; console output remains convenient locally.

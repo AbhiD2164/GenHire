@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
-import { jobApplications, getJob, applicationDecision } from "../api/jobs";
+import { jobApplications, getJob, applicationDecision, sendApplicationInvitation } from "../api/jobs";
 import { useToast } from "../context/ToastContext";
 import StatusPill from "../components/StatusPill";
 
@@ -11,8 +11,11 @@ export default function JobApplications() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [actionModal, setActionModal] = useState(null); // { appId, applicantName, action }
-  const [reasonText, setReasonText] = useState("Better skills in other candidates were found");
+  const [reasonText, setReasonText] = useState("Other applications matched the requirements more closely");
   const [submittingAction, setSubmittingAction] = useState(false);
+  const [inviteModal, setInviteModal] = useState(null);
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [submittingInvite, setSubmittingInvite] = useState(false);
   const { showToast } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -44,8 +47,8 @@ export default function JobApplications() {
       });
       showToast(
         actionModal.action === "select"
-          ? `Candidate selected! Notification email sent immediately.`
-          : `Candidate rejected. Notification email sent immediately.`,
+          ? "Applicant selected. An email and in-app update were sent."
+          : "Application declined. An email and in-app update were sent.",
         "success"
       );
       setActionModal(null);
@@ -57,6 +60,25 @@ export default function JobApplications() {
     }
   }
 
+  async function handleSendInvite(event) {
+    event.preventDefault();
+    if (!inviteModal || !inviteMessage.trim()) return;
+    setSubmittingInvite(true);
+    try {
+      await sendApplicationInvitation(inviteModal.appId, {
+        type: inviteModal.type,
+        message: inviteMessage.trim(),
+      });
+      showToast(`${inviteModal.type === "interview" ? "Interview" : "Assessment"} invitation sent.`, "success");
+      setInviteModal(null);
+      setInviteMessage("");
+    } catch (error) {
+      showToast(error.response?.data?.detail || "Could not send the invitation.", "error");
+    } finally {
+      setSubmittingInvite(false);
+    }
+  }
+
   return (
     <div className="page container">
       <Link to={`/jobs/${id}`} className="text-sm muted" style={{ display: "inline-block", marginBottom: 12 }}>
@@ -64,14 +86,14 @@ export default function JobApplications() {
       </Link>
       <div className="page-header" style={{ marginBottom: 20 }}>
         <div>
-          <span className="eyebrow">Recruiter Applicant Review</span>
+          <span className="eyebrow">Job application review</span>
           <h1>{job?.title || "Loading…"}</h1>
           <p className="muted">
-            Evaluate applicants, inspect parsed resume skills and scores, and select or reject candidates with immediate email notification.
+            Review applicants, inspect parsed resume skills and scores, and update each application.
           </p>
         </div>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All candidate statuses</option>
+          <option value="">All application statuses</option>
           <option value="selected">Selected only</option>
           <option value="applied">In review (applied) only</option>
           <option value="rejected">Rejected only</option>
@@ -98,7 +120,7 @@ export default function JobApplications() {
                   <StatusPill status={app.status} />
                   {app.rejection_stage && (
                     <span className="tag text-xs" style={{ background: "rgba(239, 68, 68, 0.12)", color: "#ef4444" }}>
-                      {app.rejection_stage === "rejected_by_system" ? "System Rejected" : "Recruiter Rejected"}
+                      {app.rejection_stage === "rejected_by_system" ? "Automated screening" : "Hiring team declined"}
                     </span>
                   )}
                 </div>
@@ -146,6 +168,24 @@ export default function JobApplications() {
 
                 <div style={{ display: "flex", gap: 8 }}>
                   <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      setInviteModal({ appId: app.id, applicantName: app.applicant_name, type: "interview" });
+                      setInviteMessage("");
+                    }}
+                  >
+                    Invite to interview
+                  </button>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => {
+                      setInviteModal({ appId: app.id, applicantName: app.applicant_name, type: "assessment" });
+                      setInviteMessage("");
+                    }}
+                  >
+                    Invite to assessment
+                  </button>
+                  <button
                     className="btn btn-sm"
                     style={{ background: "#10b981", color: "#fff", borderColor: "#10b981" }}
                     onClick={() => {
@@ -153,17 +193,17 @@ export default function JobApplications() {
                       setReasonText("Strong alignment with required skills and qualifications");
                     }}
                   >
-                    ✓ Select Candidate
+                    ✓ Select applicant
                   </button>
                   <button
                     className="btn btn-outline btn-sm"
                     style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)" }}
                     onClick={() => {
                       setActionModal({ appId: app.id, applicantName: app.applicant_name, action: "reject" });
-                      setReasonText("Better skills in other candidates were found");
+                      setReasonText("Other applications matched the requirements more closely");
                     }}
                   >
-                    ✕ Reject Candidate
+                    ✕ Decline application
                   </button>
                 </div>
               </div>
@@ -186,11 +226,11 @@ export default function JobApplications() {
         }}>
           <div className="card" style={{ maxWidth: 460, width: "100%", padding: 24 }}>
             <h3 style={{ margin: "0 0 8px" }}>
-              {actionModal.action === "select" ? "Select Candidate" : "Reject Application"}
+              {actionModal.action === "select" ? "Select applicant" : "Decline application"}
             </h3>
             <p className="muted text-sm" style={{ marginBottom: 16 }}>
-              Candidate: <strong>{actionModal.applicantName}</strong>.
-              The candidate will be notified immediately via email and their dashboard will reflect this stage.
+              Applicant: <strong>{actionModal.applicantName}</strong>.
+              They will receive an email and in-app update immediately.
             </p>
 
             <form onSubmit={handleConfirmDecision}>
@@ -225,6 +265,43 @@ export default function JobApplications() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+      {inviteModal && (
+        <div style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(0,0,0,0.65)",
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          zIndex: 1000,
+          padding: 16,
+        }}>
+          <form className="card" onSubmit={handleSendInvite} style={{ maxWidth: 460, width: "100%", padding: 24 }}>
+            <h3 style={{ margin: "0 0 8px" }}>
+              Send {inviteModal.type === "interview" ? "interview" : "assessment"} invitation
+            </h3>
+            <p className="muted text-sm">To {inviteModal.applicantName}. Include instructions, timing, or a secure meeting link.</p>
+            <div className="field">
+              <label>Invitation details</label>
+              <textarea
+                rows={4}
+                value={inviteMessage}
+                onChange={(event) => setInviteMessage(event.target.value)}
+                required
+                maxLength={1500}
+              />
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 16 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setInviteModal(null)} disabled={submittingInvite}>
+                Cancel
+              </button>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={submittingInvite || !inviteMessage.trim()}>
+                {submittingInvite ? "Sending…" : "Send invitation"}
+              </button>
+            </div>
+          </form>
         </div>
       )}
     </div>

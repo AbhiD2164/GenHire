@@ -1,7 +1,21 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-import { updateMe, listExperience, addExperience, deleteExperience } from "../api/auth";
+import {
+  updateMe,
+  listExperience,
+  addExperience,
+  updateExperience,
+  deleteExperience,
+  listEducation,
+  addEducation,
+  updateEducation,
+  deleteEducation,
+  listAchievements,
+  addAchievement,
+  updateAchievement,
+  deleteAchievement,
+} from "../api/auth";
 
 const MONTHS = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
@@ -15,7 +29,9 @@ export default function Profile() {
     username: "",
     first_name: "",
     last_name: "",
+    phone_number: "",
     headline: "",
+    industry: "",
     bio: "",
     location: "",
     skills: "",
@@ -23,6 +39,8 @@ export default function Profile() {
     company_website: "",
   });
   const [experiences, setExperiences] = useState([]);
+  const [education, setEducation] = useState([]);
+  const [achievements, setAchievements] = useState([]);
   const [savingProfile, setSavingProfile] = useState(false);
   const resumeInputRef = useRef(null);
   const avatarInputRef = useRef(null);
@@ -33,7 +51,9 @@ export default function Profile() {
         username: profile.username || "",
         first_name: profile.full_name?.split(" ")[0] || "",
         last_name: profile.full_name?.split(" ").slice(1).join(" ") || "",
+        phone_number: profile.phone_number || "",
         headline: profile.headline || "",
+        industry: profile.industry || "",
         bio: profile.bio || "",
         location: profile.location || "",
         skills: profile.skills || "",
@@ -44,8 +64,22 @@ export default function Profile() {
   }, [profile]);
 
   useEffect(() => {
-    listExperience().then((data) => setExperiences(data.results || data));
-  }, []);
+    async function loadProfileSections() {
+      try {
+        const [experienceData, educationData, achievementData] = await Promise.all([
+          listExperience(),
+          listEducation(),
+          listAchievements(),
+        ]);
+        setExperiences(experienceData.results || experienceData);
+        setEducation(educationData.results || educationData);
+        setAchievements(achievementData.results || achievementData);
+      } catch {
+        showToast("Could not load all profile sections.", "error");
+      }
+    }
+    loadProfileSections();
+  }, [showToast]);
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -123,19 +157,14 @@ export default function Profile() {
               <h1 style={{ margin: 0 }}>{profile.full_name}</h1>
               <span className="text-sm muted">(@{profile.username})</span>
             </div>
-            <p className="muted" style={{ margin: "4px 0 8px" }}>{profile.headline || "Add a headline to stand out"}</p>
+            <p className="muted" style={{ margin: "4px 0 4px" }}>{profile.headline || "Add a headline to stand out"}</p>
+            <p className="text-sm muted" style={{ margin: "0 0 8px" }}>
+              {[profile.industry, profile.location].filter(Boolean).join(" · ") || "Add your industry and location"}
+            </p>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
               <span className="tag">Active Member</span>
               {profile.company_name && (
-                profile.is_recruiter_verified ? (
-                  <span className="tag" style={{ background: "rgba(16, 185, 129, 0.15)", color: "#10b981" }}>
-                    ✓ Corporate Verified ({profile.company_name})
-                  </span>
-                ) : (
-                  <span className="tag" style={{ background: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }}>
-                    {profile.company_name}
-                  </span>
-                )
+                <span className="tag">{profile.company_name}</span>
               )}
             </div>
           </div>
@@ -173,6 +202,17 @@ export default function Profile() {
             </div>
           </div>
 
+          <div className="field-row">
+            <div className="field">
+              <label>Phone number (private)</label>
+              <input type="tel" value={form.phone_number} onChange={(e) => update("phone_number", e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Location</label>
+              <input value={form.location} onChange={(e) => update("location", e.target.value)} placeholder="City, State/Country" />
+            </div>
+          </div>
+
           <div className="field">
             <label>Professional Headline</label>
             <input
@@ -183,17 +223,17 @@ export default function Profile() {
           </div>
 
           <div className="field">
-            <label>Location</label>
+            <label>Industry</label>
             <input
-              value={form.location}
-              onChange={(e) => update("location", e.target.value)}
-              placeholder="City, State/Country"
+              value={form.industry}
+              onChange={(e) => update("industry", e.target.value)}
+              placeholder="e.g. Healthcare, Finance, Education, Technology"
             />
           </div>
 
           <div className="field-row">
             <div className="field">
-              <label>Company / Organization (Optional)</label>
+              <label>Current company / organization</label>
               <input
                 value={form.company_name}
                 onChange={(e) => update("company_name", e.target.value)}
@@ -201,8 +241,9 @@ export default function Profile() {
               />
             </div>
             <div className="field">
-              <label>Company Website (Optional)</label>
+              <label>Company website</label>
               <input
+                type="url"
                 value={form.company_website}
                 onChange={(e) => update("company_website", e.target.value)}
                 placeholder="https://acme.com"
@@ -266,6 +307,16 @@ export default function Profile() {
             <ExperienceList experiences={experiences} setExperiences={setExperiences} />
             <AddExperienceForm onAdded={(exp) => setExperiences((e) => [exp, ...e])} />
           </div>
+
+          <div className="card" style={{ padding: "20px" }}>
+            <h3 style={{ marginTop: 0 }}>Education</h3>
+            <EducationList education={education} setEducation={setEducation} />
+          </div>
+
+          <div className="card" style={{ padding: "20px" }}>
+            <h3 style={{ marginTop: 0 }}>Achievements & Certifications</h3>
+            <AchievementList achievements={achievements} setAchievements={setAchievements} />
+          </div>
         </div>
       </div>
     </div>
@@ -273,9 +324,16 @@ export default function Profile() {
 }
 
 function ExperienceList({ experiences, setExperiences }) {
+  const { showToast } = useToast();
+  const [editingId, setEditingId] = useState(null);
+
   async function handleDelete(id) {
-    await deleteExperience(id);
-    setExperiences((exps) => exps.filter((e) => e.id !== id));
+    try {
+      await deleteExperience(id);
+      setExperiences((exps) => exps.filter((e) => e.id !== id));
+    } catch {
+      showToast("Could not remove experience.", "error");
+    }
   }
 
   if (experiences.length === 0) {
@@ -286,27 +344,80 @@ function ExperienceList({ experiences, setExperiences }) {
     <div className="experience-list">
       {experiences.map((exp) => (
         <div key={exp.id} className="experience-item" style={{ padding: "10px 0", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-            <div>
-              <strong>{exp.job_title || "Untitled role"}</strong>
-              <p className="muted text-sm" style={{ margin: "2px 0" }}>{exp.company}</p>
-              <p className="text-xs muted" style={{ margin: 0 }}>
-                {MONTHS[(exp.start_month || 1) - 1]} {exp.start_year} – {exp.is_current ? "Present" : `${MONTHS[(exp.end_month || 1) - 1]} ${exp.end_year}`}
-                {exp.source === "resume" && <span className="tag tag-soft" style={{ marginLeft: 8 }}>From resume</span>}
-              </p>
+          {editingId === exp.id ? (
+            <EditExperienceForm
+              experience={exp}
+              onCancel={() => setEditingId(null)}
+              onSaved={(updated) => {
+                setExperiences((items) => items.map((item) => item.id === updated.id ? updated : item));
+                setEditingId(null);
+              }}
+            />
+          ) : (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+              <div>
+                <strong>{exp.job_title || "Untitled role"}</strong>
+                <p className="muted text-sm" style={{ margin: "2px 0" }}>{exp.company}</p>
+                <p className="text-xs muted" style={{ margin: 0 }}>
+                  {MONTHS[(exp.start_month || 1) - 1]} {exp.start_year} – {exp.is_current ? "Present" : `${MONTHS[(exp.end_month || 1) - 1]} ${exp.end_year}`}
+                  {exp.source === "resume" && <span className="tag tag-soft" style={{ marginLeft: 8 }}>From resume</span>}
+                </p>
+              </div>
+              <div className="profile-entry-actions">
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(exp.id)}>Edit</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(exp.id)} style={{ color: "#ef4444" }}>
+                  Remove
+                </button>
+              </div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={() => handleDelete(exp.id)} style={{ color: "#ef4444" }}>
-              Remove
-            </button>
-          </div>
+          )}
         </div>
       ))}
     </div>
   );
 }
 
+function EditExperienceForm({ experience, onCancel, onSaved }) {
+  const { showToast } = useToast();
+  const [form, setForm] = useState({ ...experience });
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      const updated = await updateExperience(experience.id, form);
+      onSaved(updated);
+    } catch {
+      showToast("Could not update experience.", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="profile-entry-form">
+      <div className="field-row">
+        <div className="field"><label>Role</label><input value={form.job_title} onChange={(e) => setForm({ ...form, job_title: e.target.value })} required /></div>
+        <div className="field"><label>Company</label><input value={form.company} onChange={(e) => setForm({ ...form, company: e.target.value })} required /></div>
+      </div>
+      <div className="field-row">
+        <div className="field"><label>Start year</label><input type="number" value={form.start_year || ""} onChange={(e) => setForm({ ...form, start_year: Number(e.target.value) || null })} /></div>
+        <div className="field"><label>End year</label><input type="number" value={form.end_year || ""} disabled={form.is_current} onChange={(e) => setForm({ ...form, end_year: Number(e.target.value) || null })} /></div>
+      </div>
+      <label className="checkbox-row"><input type="checkbox" checked={form.is_current} onChange={(e) => setForm({ ...form, is_current: e.target.checked, end_month: e.target.checked ? null : form.end_month, end_year: e.target.checked ? null : form.end_year })} /> I currently work here</label>
+      <div className="profile-entry-actions">
+        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>{saving ? "Saving..." : "Save"}</button>
+        <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
 function AddExperienceForm({ onAdded }) {
+  const { showToast } = useToast();
   const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     job_title: "",
     company: "",
@@ -328,18 +439,25 @@ function AddExperienceForm({ onAdded }) {
       payload.end_month = null;
       payload.end_year = null;
     }
-    const exp = await addExperience(payload);
-    onAdded(exp);
-    setOpen(false);
-    setForm({
-      job_title: "",
-      company: "",
-      start_month: 1,
-      start_year: new Date().getFullYear(),
-      end_month: 1,
-      end_year: new Date().getFullYear(),
-      is_current: false,
-    });
+    setSaving(true);
+    try {
+      const exp = await addExperience(payload);
+      onAdded(exp);
+      setOpen(false);
+      setForm({
+        job_title: "",
+        company: "",
+        start_month: 1,
+        start_year: new Date().getFullYear(),
+        end_month: 1,
+        end_year: new Date().getFullYear(),
+        is_current: false,
+      });
+    } catch {
+      showToast("Could not save experience.", "error");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open) {
@@ -391,9 +509,200 @@ function AddExperienceForm({ onAdded }) {
         </div>
       )}
       <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-        <button className="btn btn-primary btn-sm" type="submit">Save Experience</button>
-        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)}>Cancel</button>
+        <button className="btn btn-primary btn-sm" type="submit" disabled={saving}>{saving ? "Saving..." : "Save Experience"}</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} disabled={saving}>Cancel</button>
       </div>
     </form>
   );
 }
+
+  function EducationList({ education, setEducation }) {
+    const { showToast } = useToast();
+    const [adding, setAdding] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+
+    async function saveEntry(event, entry, isNew) {
+      event.preventDefault();
+      const payload = { ...entry };
+      if (payload.is_current) payload.end_year = null;
+      try {
+        const saved = isNew
+          ? await addEducation(payload)
+          : await updateEducation(entry.id, payload);
+        setEducation((items) => isNew
+          ? [saved, ...items]
+          : items.map((item) => item.id === saved.id ? saved : item));
+        setAdding(false);
+        setEditingId(null);
+        showToast("Education updated.", "success");
+      } catch {
+        showToast("Could not save education.", "error");
+      }
+    }
+
+    async function removeEntry(id) {
+      try {
+        await deleteEducation(id);
+        setEducation((items) => items.filter((item) => item.id !== id));
+      } catch {
+        showToast("Could not remove education.", "error");
+      }
+    }
+
+    return (
+      <div className="profile-entry-list">
+        {education.length === 0 && <p className="muted text-sm">Add schools, universities, or training programs.</p>}
+        {education.map((entry) => (
+          <div key={entry.id} className="profile-entry">
+            {editingId === entry.id ? (
+              <EducationForm initial={entry} onSubmit={(event, value) => saveEntry(event, value, false)} onCancel={() => setEditingId(null)} />
+            ) : (
+              <>
+                <div>
+                  <strong>{entry.degree || entry.field_of_study || "Education"}</strong>
+                  <p className="muted text-sm">{entry.institution}{entry.field_of_study && entry.degree ? ` · ${entry.field_of_study}` : ""}</p>
+                  <p className="text-xs muted">
+                    {entry.start_year || "Start year not set"} – {entry.is_current ? "Present" : entry.end_year || "End year not set"}
+                  </p>
+                  {entry.description && <p className="text-sm muted profile-entry-description">{entry.description}</p>}
+                </div>
+                <div className="profile-entry-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(entry.id)}>Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => removeEntry(entry.id)}>Remove</button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {adding ? (
+          <EducationForm onSubmit={(event, value) => saveEntry(event, value, true)} onCancel={() => setAdding(false)} />
+        ) : (
+          <button className="btn btn-outline btn-sm profile-add-entry" onClick={() => setAdding(true)}>+ Add education</button>
+        )}
+      </div>
+    );
+  }
+
+  function EducationForm({ initial, onSubmit, onCancel }) {
+    const [form, setForm] = useState(initial || {
+      institution: "",
+      institution_url: "",
+      degree: "",
+      field_of_study: "",
+      start_year: "",
+      end_year: "",
+      is_current: false,
+      description: "",
+    });
+
+    return (
+      <form className="profile-entry-form" onSubmit={(event) => onSubmit(event, form)}>
+        <div className="field"><label>School or institution</label><input value={form.institution} onChange={(e) => setForm({ ...form, institution: e.target.value })} required /></div>
+        <div className="field"><label>School or institution website</label><input type="url" value={form.institution_url || ""} onChange={(e) => setForm({ ...form, institution_url: e.target.value })} placeholder="https://school.edu" /></div>
+        <div className="field-row">
+          <div className="field"><label>Degree or qualification</label><input value={form.degree || ""} onChange={(e) => setForm({ ...form, degree: e.target.value })} /></div>
+          <div className="field"><label>Field of study</label><input value={form.field_of_study || ""} onChange={(e) => setForm({ ...form, field_of_study: e.target.value })} /></div>
+        </div>
+        <div className="field-row">
+          <div className="field"><label>Start year</label><input type="number" min="1900" max="2100" value={form.start_year || ""} onChange={(e) => setForm({ ...form, start_year: Number(e.target.value) || null })} /></div>
+          <div className="field"><label>End year</label><input type="number" min="1900" max="2100" value={form.end_year || ""} disabled={form.is_current} onChange={(e) => setForm({ ...form, end_year: Number(e.target.value) || null })} /></div>
+        </div>
+        <label className="checkbox-row"><input type="checkbox" checked={form.is_current} onChange={(e) => setForm({ ...form, is_current: e.target.checked, end_year: e.target.checked ? null : form.end_year })} /> I currently study here</label>
+        <div className="field"><label>Details</label><textarea rows={2} value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+        <div className="profile-entry-actions">
+          <button className="btn btn-primary btn-sm" type="submit">Save education</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
+    );
+  }
+
+  function AchievementList({ achievements, setAchievements }) {
+    const { showToast } = useToast();
+    const [adding, setAdding] = useState(false);
+    const [editingId, setEditingId] = useState(null);
+
+    async function saveEntry(event, entry, isNew) {
+      event.preventDefault();
+      try {
+        const saved = isNew
+          ? await addAchievement(entry)
+          : await updateAchievement(entry.id, entry);
+        setAchievements((items) => isNew
+          ? [saved, ...items]
+          : items.map((item) => item.id === saved.id ? saved : item));
+        setAdding(false);
+        setEditingId(null);
+        showToast("Achievement updated.", "success");
+      } catch {
+        showToast("Could not save achievement.", "error");
+      }
+    }
+
+    async function removeEntry(id) {
+      try {
+        await deleteAchievement(id);
+        setAchievements((items) => items.filter((item) => item.id !== id));
+      } catch {
+        showToast("Could not remove achievement.", "error");
+      }
+    }
+
+    return (
+      <div className="profile-entry-list">
+        {achievements.length === 0 && <p className="muted text-sm">Add certifications, awards, projects, or other professional accomplishments.</p>}
+        {achievements.map((entry) => (
+          <div key={entry.id} className="profile-entry">
+            {editingId === entry.id ? (
+              <AchievementForm initial={entry} onSubmit={(event, value) => saveEntry(event, value, false)} onCancel={() => setEditingId(null)} />
+            ) : (
+              <>
+                <div>
+                  <strong>{entry.title}</strong>
+                  {entry.issuer && <p className="muted text-sm">{entry.issuer}</p>}
+                  {entry.year && <p className="text-xs muted">{entry.year}</p>}
+                  {entry.description && <p className="text-sm muted profile-entry-description">{entry.description}</p>}
+                  {entry.credential_url && <a className="text-sm profile-credential-link" href={entry.credential_url} target="_blank" rel="noreferrer">View credential</a>}
+                </div>
+                <div className="profile-entry-actions">
+                  <button className="btn btn-ghost btn-sm" onClick={() => setEditingId(entry.id)}>Edit</button>
+                  <button className="btn btn-ghost btn-sm" onClick={() => removeEntry(entry.id)}>Remove</button>
+                </div>
+              </>
+            )}
+          </div>
+        ))}
+        {adding ? (
+          <AchievementForm onSubmit={(event, value) => saveEntry(event, value, true)} onCancel={() => setAdding(false)} />
+        ) : (
+          <button className="btn btn-outline btn-sm profile-add-entry" onClick={() => setAdding(true)}>+ Add achievement</button>
+        )}
+      </div>
+    );
+  }
+
+  function AchievementForm({ initial, onSubmit, onCancel }) {
+    const [form, setForm] = useState(initial || {
+      title: "",
+      issuer: "",
+      year: "",
+      description: "",
+      credential_url: "",
+    });
+
+    return (
+      <form className="profile-entry-form" onSubmit={(event) => onSubmit(event, form)}>
+        <div className="field"><label>Title</label><input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required /></div>
+        <div className="field-row">
+          <div className="field"><label>Issuer</label><input value={form.issuer || ""} onChange={(e) => setForm({ ...form, issuer: e.target.value })} /></div>
+          <div className="field"><label>Year</label><input type="number" min="1900" max="2100" value={form.year || ""} onChange={(e) => setForm({ ...form, year: Number(e.target.value) || null })} /></div>
+        </div>
+        <div className="field"><label>Description</label><textarea rows={2} value={form.description || ""} onChange={(e) => setForm({ ...form, description: e.target.value })} /></div>
+        <div className="field"><label>Credential URL</label><input type="url" value={form.credential_url || ""} onChange={(e) => setForm({ ...form, credential_url: e.target.value })} /></div>
+        <div className="profile-entry-actions">
+          <button className="btn btn-primary btn-sm" type="submit">Save achievement</button>
+          <button className="btn btn-ghost btn-sm" type="button" onClick={onCancel}>Cancel</button>
+        </div>
+      </form>
+    );
+  }

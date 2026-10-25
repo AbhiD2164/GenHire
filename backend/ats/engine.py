@@ -10,12 +10,14 @@ from django.utils import timezone
 from .text_extraction import extract_resume_text
 from .location_extraction import extract_location
 from .experience_extraction import extract_experience_segments, months_to_label
+from .matching_features import extract_education_text
 from .skill_extraction import (
     normalize_text,
     parse_skill_list,
     skill_match,
     extract_present_skills,
     tokenized_relevance_score,
+    SKILL_SYNONYMS,
 )
 from accounts.verification import verify_candidate_resume_security
 from accounts.firebase_service import send_immediate_application_result_email
@@ -57,6 +59,7 @@ def process_resume(application):
 
     # Extract raw text
     raw_text = extract_resume_text(file_path)
+    extracted_education = extract_education_text(raw_text)
 
     # 2. Security & Phishing URL & Unstructured Format Validation
     sec_check = verify_candidate_resume_security(file_name, b"", raw_text)
@@ -73,12 +76,13 @@ def process_resume(application):
             application=application,
             defaults={
                 "raw_text_excerpt": raw_text[:2000] if raw_text else "",
+                "extracted_education": extracted_education,
                 "parse_warnings": sec_check["message"],
             },
         )
         send_immediate_application_result_email(application)
         # Runtime suggestions for applicant based on profile
-        compute_runtime_suggestions(application.applicant, applied_job=job, resume_score=0.0)
+        compute_runtime_suggestions(application.applicant)
         return application
 
     # 3. Location extraction
@@ -90,7 +94,7 @@ def process_resume(application):
     # 5. Skills extraction
     required_skills = parse_skill_list(job.skills_required)
     good_skills = parse_skill_list(job.good_to_have)
-    full_universe = list(dict.fromkeys(required_skills + good_skills))
+    full_universe = list(dict.fromkeys([*SKILL_SYNONYMS, *required_skills, *good_skills]))
 
     found_skills = extract_present_skills(raw_text, full_universe)
     found_set = set(found_skills)
@@ -177,6 +181,7 @@ def process_resume(application):
             "phone_found": _find_phone(raw_text),
             "location_found": location_found,
             "extracted_skills": ", ".join(found_skills),
+            "extracted_education": extracted_education,
             "total_experience_months": total_months,
             "experience_segments_json": json.dumps(segments),
             "parse_warnings": "" if segments else "No clear date ranges found in work history.",
@@ -190,12 +195,7 @@ def process_resume(application):
     send_immediate_application_result_email(application)
 
     # 8. Trigger RabbitMQ runtime suggestions
-    compute_runtime_suggestions(
-        user=application.applicant,
-        applied_job=job,
-        resume_score=final_score,
-        extracted_skills=found_skills,
-    )
+    compute_runtime_suggestions(application.applicant)
 
     return application
 

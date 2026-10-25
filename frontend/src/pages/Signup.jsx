@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signup, firebaseSignIn } from "../api/auth";
+import { signup } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { loginWithFirebaseGoogle } from "../utils/firebase";
@@ -19,12 +19,11 @@ export default function Signup() {
     company_name: "",
     company_website: "",
   });
-  const [showCompanyFields, setShowCompanyFields] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const { showToast } = useToast();
   const navigate = useNavigate();
-  const { refreshProfile } = useAuth();
+  const { loginWithFirebase } = useAuth();
 
   function update(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -32,10 +31,6 @@ export default function Signup() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    if (!form.phone_number.trim()) {
-      showToast("Please enter a valid mobile number for contact verification.", "error");
-      return;
-    }
     setSubmitting(true);
     try {
       await signup(form);
@@ -54,12 +49,11 @@ export default function Signup() {
     setGoogleLoading(true);
     try {
       const { idToken } = await loginWithFirebaseGoogle();
-      await firebaseSignIn({
+      await loginWithFirebase({
         id_token: idToken,
         company_name: form.company_name,
         company_website: form.company_website,
       });
-      await refreshProfile();
       showToast("Signed in successfully!", "success");
       navigate("/feed");
     } catch (err) {
@@ -76,7 +70,7 @@ export default function Signup() {
           <span className="eyebrow" style={{ margin: "0 auto 6px" }}>Unified Registration</span>
           <h1 style={{ fontSize: 24, margin: "0 0 6px", fontWeight: 800 }}>Create Your GenHire Account</h1>
           <p className="muted text-sm" style={{ margin: 0 }}>
-            One account to search open roles, connect with peers, or hire for your company.
+            One professional account for networking, career opportunities, and sharing work.
           </p>
         </div>
 
@@ -127,7 +121,7 @@ export default function Signup() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "16px 0" }}>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-          <span className="text-xs muted font-semibold">OR REGISTER WITH EMAIL & MOBILE</span>
+          <span className="text-xs muted font-semibold">OR REGISTER WITH EMAIL</span>
           <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
         </div>
 
@@ -166,13 +160,12 @@ export default function Signup() {
               />
             </div>
             <div className="field">
-              <label>Mobile / Phone Number</label>
+              <label>Phone Number (optional)</label>
               <input
                 type="tel"
                 value={form.phone_number}
                 onChange={(e) => update("phone_number", e.target.value)}
                 placeholder="+1 555-0199 or +91 9876543210"
-                required
               />
             </div>
           </div>
@@ -193,21 +186,11 @@ export default function Signup() {
           <div className="field-row">
             <div className="field">
               <label>Industry</label>
-              <select
+              <input
                 value={form.industry}
                 onChange={(e) => update("industry", e.target.value)}
-                style={{ padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--paper)" }}
-              >
-                <option value="Information Technology">Information Technology & Software</option>
-                <option value="Healthcare & Nursing">Healthcare, Medical & Nursing</option>
-                <option value="Finance & Accounting">Finance, Banking & Accounting</option>
-                <option value="Engineering & Manufacturing">Engineering & Manufacturing</option>
-                <option value="Sales & Marketing">Sales, Marketing & Growth</option>
-                <option value="Human Resources">Human Resources & Recruitment</option>
-                <option value="Legal & Compliance">Legal & Compliance</option>
-                <option value="Operations & Logistics">Operations & Supply Chain</option>
-                <option value="Education & Academia">Education & Training</option>
-              </select>
+                placeholder="e.g. Healthcare, Engineering, Education"
+              />
             </div>
             <div className="field">
               <label>Location</label>
@@ -229,38 +212,25 @@ export default function Signup() {
             />
           </div>
 
-          {/* Optional Company Affiliation */}
-          <div style={{ margin: "10px 0 14px" }}>
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => setShowCompanyFields(!showCompanyFields)}
-              style={{ padding: "4px 8px", fontSize: 12.5 }}
-            >
-              {showCompanyFields ? "− Hide Company / Employer Details" : "+ Hiring or representing a company? (Optional)"}
-            </button>
-          </div>
-
-          {showCompanyFields && (
-            <div className="field-row" style={{ background: "#F8FAFC", padding: 12, borderRadius: 8, border: "1px solid var(--border)", marginBottom: 14 }}>
-              <div className="field">
-                <label>Company Name</label>
-                <input
-                  value={form.company_name}
-                  onChange={(e) => update("company_name", e.target.value)}
-                  placeholder="e.g. Acme Corp"
-                />
-              </div>
-              <div className="field">
-                <label>Company Website</label>
-                <input
-                  value={form.company_website}
-                  onChange={(e) => update("company_website", e.target.value)}
-                  placeholder="https://acme.com"
-                />
-              </div>
+          <div className="field-row">
+            <div className="field">
+              <label>Company or organization (optional)</label>
+              <input
+                value={form.company_name}
+                onChange={(e) => update("company_name", e.target.value)}
+                placeholder="Company, school, or organization"
+              />
             </div>
-          )}
+            <div className="field">
+              <label>Official website (optional)</label>
+              <input
+                type="url"
+                value={form.company_website}
+                onChange={(e) => update("company_website", e.target.value)}
+                placeholder="https://example.org"
+              />
+            </div>
+          </div>
 
           {/* Password */}
           <div className="field">

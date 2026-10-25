@@ -5,15 +5,14 @@ import re
 
 class Community(models.Model):
     COMMUNITY_TYPE_CHOICES = (
-        ("open_source", "Open-Source Community"),
-        ("public_group", "Public Professional Group"),
-        ("private_group", "Private Group"),
+        ("public", "Public Community"),
+        ("private", "Private Community"),
     )
 
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=255, unique=True)
     description = models.TextField(blank=True)
-    community_type = models.CharField(max_length=30, choices=COMMUNITY_TYPE_CHOICES, default="public_group")
+    community_type = models.CharField(max_length=30, choices=COMMUNITY_TYPE_CHOICES, default="public")
     creator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="created_communities")
     members = models.ManyToManyField(settings.AUTH_USER_MODEL, related_name="joined_communities", blank=True)
     avatar = models.ImageField(upload_to="community_avatars/", null=True, blank=True)
@@ -24,6 +23,85 @@ class Community(models.Model):
 
     def __str__(self):
         return f"{self.name} ({self.community_type})"
+
+
+class CommunityMembershipRequest(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("declined", "Declined"),
+    )
+
+    community = models.ForeignKey(
+        Community, on_delete=models.CASCADE, related_name="membership_requests"
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="community_membership_requests"
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["created_at"]
+        unique_together = ("community", "user")
+
+
+class CommunityInvitation(models.Model):
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("accepted", "Accepted"),
+        ("declined", "Declined"),
+    )
+
+    community = models.ForeignKey(
+        Community, on_delete=models.CASCADE, related_name="invitations"
+    )
+    inviter = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="sent_community_invitations"
+    )
+    invitee = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="received_community_invitations"
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        unique_together = ("community", "inviter", "invitee")
+
+
+class Notification(models.Model):
+    TYPE_CHOICES = (
+        ("connection_request", "Connection request"),
+        ("connection_post", "Connection post"),
+        ("post_like", "Post like"),
+        ("post_comment", "Post comment"),
+        ("community_request", "Community join request"),
+        ("community_invitation", "Community invitation"),
+        ("application_update", "Application update"),
+        ("job_application", "Job application"),
+        ("interview_invite", "Interview invitation"),
+        ("assessment_invite", "Assessment invitation"),
+    )
+
+    recipient = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="notifications"
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="notifications_sent",
+    )
+    notification_type = models.CharField(max_length=32, choices=TYPE_CHOICES)
+    title = models.CharField(max_length=255)
+    body = models.TextField(blank=True)
+    target_url = models.CharField(max_length=500, blank=True)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
 
 
 class CommunityMessage(models.Model):

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { myApplications, recruiterDashboard, getRuntimeSuggestions, getApplicationStats } from "../api/jobs";
+import { myApplications, myPostedJobs, getRuntimeSuggestions, getApplicationStats } from "../api/jobs";
 import { myConnections } from "../api/network";
 
 export default function Dashboard() {
@@ -10,6 +10,7 @@ export default function Dashboard() {
   const [applications, setApplications] = useState([]);
   const [postedJobs, setPostedJobs] = useState([]);
   const [suggestions, setSuggestions] = useState([]);
+  const [suggestionSource, setSuggestionSource] = useState("none");
   const [connectionCount, setConnectionCount] = useState(0);
   const [appStats, setAppStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19,7 +20,7 @@ export default function Dashboard() {
     try {
       const [appsData, postedData, suggData, connData, statsData] = await Promise.all([
         myApplications().catch(() => ({ results: [] })),
-        recruiterDashboard().catch(() => []),
+        myPostedJobs().catch(() => []),
         getRuntimeSuggestions().catch(() => ({ suggestions: [] })),
         myConnections().catch(() => ({ connections: [] })),
         getApplicationStats().catch(() => null),
@@ -27,6 +28,7 @@ export default function Dashboard() {
       setApplications(appsData.results || appsData || []);
       setPostedJobs(postedData || []);
       setSuggestions(suggData.suggestions || []);
+      setSuggestionSource(suggData.source || "none");
       setConnectionCount(connData.connections?.length || 0);
       setAppStats(statsData);
     } finally {
@@ -89,17 +91,13 @@ export default function Dashboard() {
                 </h1>
                 <span className="text-sm muted">@{profile.username}</span>
 
-                {profile.is_recruiter_verified ? (
-                  <span className="badge" style={{ background: "#DCFCE7", color: "#166534" }}>
-                    ✓ Verified Employer ({profile.company_name})
-                  </span>
-                ) : profile.company_name ? (
+                {profile.company_name ? (
                   <span className="badge" style={{ background: "#FEF3C7", color: "#92400E" }}>
                     {profile.company_name}
                   </span>
                 ) : (
                   <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1" }}>
-                    ✓ Member Active
+                    Professional member
                   </span>
                 )}
               </div>
@@ -202,7 +200,7 @@ export default function Dashboard() {
                 }}
               >
                 <div style={{ fontSize: 11, fontWeight: 700, color: "#991B1B", marginBottom: 4 }}>
-                  NOT SELECTED BY EMPLOYER
+                  DECLINED BY HIRING TEAM
                 </div>
                 <div style={{ fontSize: 22, fontWeight: 800, color: "#DC2626" }}>
                   {appStats.rejected_by_recruiter}
@@ -274,7 +272,7 @@ export default function Dashboard() {
                         {job.applicant_count || 0} applicants
                       </span>
                       <Link to={`/jobs/${job.id}/applications`} className="btn btn-primary btn-sm">
-                        Review Candidates
+                        Review Applications
                       </Link>
                     </div>
                   </div>
@@ -295,7 +293,7 @@ export default function Dashboard() {
                 <div>
                   <h3 style={{ margin: "0 0 4px", fontSize: 15, color: "#0369A1" }}>Hiring for your company or team?</h3>
                   <p className="text-xs muted" style={{ margin: 0 }}>
-                    Post an open job role anytime to automatically screen resumes, receive instant ATS-scored candidates, and find qualified talent.
+                  Share a job opening, review applications, and use resume matching to organize the hiring process.
                   </p>
                 </div>
                 <Link to="/jobs/new" className="btn btn-primary btn-sm">
@@ -311,7 +309,7 @@ export default function Dashboard() {
               <div>
                 <h3 style={{ margin: 0, fontSize: 16 }}>Application Status Center</h3>
                 <p className="text-sm muted" style={{ margin: "2px 0 0" }}>
-                  Instant ATS screening results, status breakdown, and candidate communication history
+                  Application screening results, status breakdown, and communication history
                 </p>
               </div>
 
@@ -472,11 +470,15 @@ export default function Dashboard() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
               <h4 style={{ margin: 0, fontSize: 14 }}>Recommended for You</h4>
               <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1", fontSize: 10 }}>
-                Smart Match
+                {suggestionSource === "trained_ml"
+                  ? "Learned match"
+                  : suggestionSource === "content_similarity"
+                    ? "Profile match"
+                    : "Job match"}
               </span>
             </div>
             <p className="text-xs muted" style={{ margin: "0 0 12px" }}>
-              Roles aligned with your industry experience, skills, and application preferences:
+              Ranked using your skills, experience, education, and role requirements.
             </p>
 
             {suggestions.length === 0 ? (
@@ -523,7 +525,7 @@ export default function Dashboard() {
               />
             </div>
             <p className="text-xs muted" style={{ margin: "0 0 10px" }}>
-              Complete profiles with a verified phone number and skills increase connection acceptance and recruiter response by 3x.
+              Add a current phone number and skills to make your profile more useful to your network.
             </p>
             <Link to="/profile/edit" className="btn btn-ghost btn-sm" style={{ width: "100%", justifyContent: "center" }}>
               Update Profile Details →

@@ -13,7 +13,7 @@ class JobSerializer(serializers.ModelSerializer):
         fields = [
             "id", "title", "company_name", "industry", "job_type", "work_mode",
             "location", "description", "min_experience_months", "max_experience_months",
-            "required_experience_label", "skills_required", "good_to_have",
+            "required_experience_label", "skills_required", "good_to_have", "education_requirements",
             "salary_min", "salary_max", "is_active",
             "created_by", "created_by_name", "created_at", "updated_at",
             "applicant_count", "has_applied",
@@ -41,7 +41,7 @@ class JobWriteSerializer(serializers.ModelSerializer):
         model = Job
         fields = [
             "id", "title", "company_name", "industry", "job_type", "work_mode",
-            "location", "description", "skills_required", "good_to_have",
+            "location", "description", "skills_required", "good_to_have", "education_requirements",
             "salary_min", "salary_max", "is_active",
             "min_experience_years", "max_experience_years",
         ]

@@ -4,84 +4,20 @@ import {
   myConnections,
   respondConnectionRequest,
   sendConnectionRequest,
+  withdrawConnectionRequest,
   getSuggestedPeople,
   getCommunities,
   createCommunity,
-  toggleCommunityMembership,
+  updateCommunityMembership,
+  getCommunityMembershipRequests,
+  respondCommunityMembershipRequest,
+  getCommunityInvitations,
+  inviteToCommunity,
+  respondCommunityInvitation,
 } from "../api/network";
-import { searchCandidates } from "../api/auth";
+import { searchPeople } from "../api/auth";
 import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
-
-const CURATED_FEATURED_PEOPLE = [
-  {
-    id: "featured-1",
-    displayName: "Dr. Sarah Mitchell",
-    username: "sarah_mitchell",
-    headline: "Chief Clinical Informatics Officer • Healthcare AI",
-    industry: "Healthcare & Life Sciences",
-    avatar: null,
-    initial: "S",
-    isCurated: true,
-  },
-  {
-    id: "featured-2",
-    displayName: "Alexander Vance",
-    username: "avance_tech",
-    headline: "Principal Distributed Systems Engineer • Cloud Platforms",
-    industry: "Software & Technology",
-    avatar: null,
-    initial: "A",
-    isCurated: true,
-  },
-  {
-    id: "featured-3",
-    displayName: "Priya Sundaram",
-    username: "priya_fintech",
-    headline: "VP of Quantitative Risk & Algorithmic Trading",
-    industry: "Financial Services",
-    avatar: null,
-    initial: "P",
-    isCurated: true,
-  },
-  {
-    id: "featured-4",
-    displayName: "Elena Rostova",
-    username: "elena_design",
-    headline: "Head of Product Design & Human-Centered Systems",
-    industry: "Design & UX",
-    avatar: null,
-    initial: "E",
-    isCurated: true,
-  },
-];
-
-const CURATED_DEFAULT_COMMUNITIES = [
-  {
-    id: 1,
-    name: "Open Source AI & ML Innovators",
-    community_type: "open_source",
-    description: "Collaborative research and engineering on open-source transformer models and data architectures.",
-    members_count: 1420,
-    isCurated: false,
-  },
-  {
-    id: 2,
-    name: "Cloud Architecture & High-Scale Systems",
-    community_type: "public_group",
-    description: "Enterprise backend engineers, SREs, and DevOps professionals discussing high-availability patterns.",
-    members_count: 980,
-    isCurated: false,
-  },
-  {
-    id: 3,
-    name: "Healthcare Informatics & BioTech",
-    community_type: "public_group",
-    description: "Clinical researchers, health data scientists, and digital health software builders.",
-    members_count: 640,
-    isCurated: false,
-  },
-];
 
 export default function Network() {
   const { profile } = useAuth();
@@ -90,13 +26,17 @@ export default function Network() {
   const [connectionData, setConnectionData] = useState({ connections: [], pending_received: [], pending_sent: [] });
   const [suggestedPeople, setSuggestedPeople] = useState([]);
   const [communities, setCommunities] = useState([]);
+  const [membershipRequests, setMembershipRequests] = useState([]);
+  const [communityInvitations, setCommunityInvitations] = useState([]);
+  const [inviteSelections, setInviteSelections] = useState({});
   const [loading, setLoading] = useState(true);
   const [memberSearchQuery, setMemberSearchQuery] = useState("");
+  const [communitySearchQuery, setCommunitySearchQuery] = useState("");
   const [sentRequests, setSentRequests] = useState(new Set());
 
   // Community creation state
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newComm, setNewComm] = useState({ name: "", description: "", community_type: "opensource" });
+  const [newComm, setNewComm] = useState({ name: "", description: "", community_type: "public" });
   const [submittingComm, setSubmittingComm] = useState(false);
 
   // Active section view
@@ -105,29 +45,34 @@ export default function Network() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [connRes, suggestionsRes, commRes, candidatesRes] = await Promise.all([
+      const [connRes, suggestionsRes, commRes, peopleRes, membershipRequestsRes, invitationsRes] = await Promise.all([
         myConnections().catch(() => ({ connections: [], pending_received: [], pending_sent: [] })),
         getSuggestedPeople().catch(() => []),
         getCommunities().catch(() => []),
-        searchCandidates({}).catch(() => []),
+        searchPeople({}).catch(() => []),
+        getCommunityMembershipRequests().catch(() => []),
+        getCommunityInvitations().catch(() => []),
       ]);
 
       setConnectionData(connRes || { connections: [], pending_received: [], pending_sent: [] });
+      setSentRequests(new Set((connRes?.pending_sent || []).map((c) => c.to_user)));
 
       const realSuggestions = suggestionsRes || [];
-      const platformCandidates = (candidatesRes.results || candidatesRes || []).filter(
+      const platformMembers = (peopleRes.results || peopleRes || []).filter(
         (c) => c.id !== profile?.user_id
       );
 
       const merged = [...realSuggestions];
-      platformCandidates.forEach((cand) => {
-        if (!merged.some((m) => m.id === cand.id)) {
-          merged.push(cand);
+      platformMembers.forEach((member) => {
+        if (!merged.some((suggestion) => suggestion.id === member.id)) {
+          merged.push(member);
         }
       });
 
       setSuggestedPeople(merged);
-      setCommunities(commRes || []);
+      setCommunities(Array.isArray(commRes) ? commRes : commRes?.results || []);
+      setMembershipRequests(membershipRequestsRes || []);
+      setCommunityInvitations(invitationsRes || []);
     } catch (err) {
       console.error(err);
       showToast("Unable to refresh network suggestions.", "error");
@@ -140,9 +85,24 @@ export default function Network() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const query = communitySearchQuery.trim();
+        const results = await getCommunities(query ? { search: query } : {});
+        setCommunities(Array.isArray(results) ? results : results?.results || []);
+      } catch (error) {
+        console.error("Could not search communities.", error);
+        showToast("Unable to search communities.", "error");
+      }
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [communitySearchQuery, showToast]);
+
   async function handleRespond(id, action) {
     try {
       await respondConnectionRequest(id, action);
+      window.dispatchEvent(new Event("genhire:notifications-updated"));
       showToast(action === "accept" ? "Connection accepted!" : "Request declined.", "success");
       fetchData();
     } catch {
@@ -150,37 +110,105 @@ export default function Network() {
     }
   }
 
-  async function handleConnect(userId, isCurated = false) {
-    if (isCurated) {
-      setSentRequests((prev) => new Set(prev).add(userId));
-      showToast("Connection invitation sent!", "success");
-      return;
-    }
+  async function handleConnect(userId) {
     try {
-      await sendConnectionRequest(userId);
+      const request = await sendConnectionRequest(userId);
+      setConnectionData((current) => ({
+        ...current,
+        pending_sent: [...current.pending_sent.filter((item) => item.id !== request.id), request],
+      }));
       setSentRequests((prev) => new Set(prev).add(userId));
       showToast("Connection invitation sent!", "success");
-      fetchData();
     } catch (err) {
       showToast(err?.response?.data?.detail || "Could not send invitation.", "error");
     }
   }
 
-  async function handleToggleCommunity(commId, isCurated = false) {
-    if (isCurated) {
-      showToast("Joined community channel!", "success");
+  async function handleToggleCommunity(commId) {
+    try {
+      const comm = communities.find((item) => item.id === commId);
+      const action = comm?.is_member ? "leave" : "join";
+      const res = await updateCommunityMembership(commId, action);
+      setCommunities((prev) =>
+        prev.map((c) =>
+          c.id === commId ? {
+            ...c,
+            is_member: res.joined,
+            members_count: res.members_count,
+            join_request_status: res.join_request_status,
+          } : c
+        )
+      );
+      showToast(
+        res.joined
+          ? "Joined community."
+          : res.join_request_status === "pending"
+            ? "Join request sent for admin approval."
+            : "Left community.",
+        "success",
+      );
+    } catch {
+      showToast("Unable to update community membership.", "error");
+    }
+  }
+
+  async function handleRespondToJoinRequest(requestId, action) {
+    try {
+      await respondCommunityMembershipRequest(requestId, action);
+      window.dispatchEvent(new Event("genhire:notifications-updated"));
+      setMembershipRequests((pending) => pending.filter((item) => item.id !== requestId));
+      showToast(action === "allow" ? "Member request approved." : "Member request denied.", "success");
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || "Could not update join request.", "error");
+    }
+  }
+
+  async function handleRespondToCommunityInvitation(invitationId, action) {
+    try {
+      await respondCommunityInvitation(invitationId, action);
+      window.dispatchEvent(new Event("genhire:notifications-updated"));
+      setCommunityInvitations((items) => items.filter((item) => item.id !== invitationId));
+      showToast(
+        action === "accept" ? "Community invitation accepted." : "Community invitation declined.",
+        "success",
+      );
+      fetchData();
+    } catch (err) {
+      showToast(err?.response?.data?.detail || "Could not respond to the invitation.", "error");
+    }
+  }
+
+  async function handleInviteToCommunity(communityId) {
+    const userId = inviteSelections[communityId];
+    if (!userId) {
+      showToast("Choose a connection to invite.", "error");
       return;
     }
     try {
-      const res = await toggleCommunityMembership(commId);
-      setCommunities((prev) =>
-        prev.map((c) =>
-          c.id === commId ? { ...c, is_member: res.joined, members_count: res.members_count } : c
-        )
-      );
-      showToast(res.joined ? "Joined community!" : "Left community.", "success");
-    } catch {
-      showToast("Unable to update community membership.", "error");
+      await inviteToCommunity(communityId, userId);
+      setInviteSelections((current) => ({ ...current, [communityId]: "" }));
+      showToast("Community invitation sent.", "success");
+    } catch (err) {
+      showToast(err?.response?.data?.detail || "Could not send the community invitation.", "error");
+    }
+  }
+
+  async function handleWithdrawConnection(connectionId, userId) {
+    try {
+      await withdrawConnectionRequest(connectionId);
+      setSentRequests((previous) => {
+        const next = new Set(previous);
+        next.delete(userId);
+        return next;
+      });
+      setConnectionData((current) => ({
+        ...current,
+        pending_sent: current.pending_sent.filter((item) => item.id !== connectionId),
+      }));
+      showToast("Connection request withdrawn.", "success");
+    } catch (err) {
+      showToast(err?.response?.data?.detail || "Could not withdraw request.", "error");
     }
   }
 
@@ -192,7 +220,7 @@ export default function Network() {
       const created = await createCommunity(newComm);
       setCommunities((prev) => [created, ...prev]);
       setShowCreateModal(false);
-      setNewComm({ name: "", description: "", community_type: "opensource" });
+      setNewComm({ name: "", description: "", community_type: "public" });
       showToast("Community successfully launched!", "success");
     } catch (err) {
       showToast(err?.response?.data?.detail || "Could not create community.", "error");
@@ -202,20 +230,15 @@ export default function Network() {
   }
 
   // Filter suggested people by search query if typed
-  const displayedPeople = (
-    suggestedPeople.length > 0
-      ? suggestedPeople.map((p) => ({
+  const displayedPeople = suggestedPeople.map((p) => ({
           id: p.id,
           displayName: p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username,
           username: p.username,
-          headline: p.headline || p.role || "GenHire Professional",
+          headline: p.headline || "GenHire Professional",
           industry: p.industry || p.location || "Professional Member",
           avatar: p.avatar,
           initial: (p.first_name || p.username || "U").charAt(0).toUpperCase(),
-          isCurated: false,
-        }))
-      : CURATED_FEATURED_PEOPLE
-  ).filter((p) => {
+        })).filter((p) => {
     if (!memberSearchQuery.trim()) return true;
     const q = memberSearchQuery.toLowerCase();
     return (
@@ -225,7 +248,7 @@ export default function Network() {
     );
   });
 
-  const displayedCommunities = communities.length > 0 ? communities : CURATED_DEFAULT_COMMUNITIES;
+  const displayedCommunities = communities;
 
   if (loading) {
     return (
@@ -259,7 +282,7 @@ export default function Network() {
             className={`network-nav-item ${activeTab === "communities" ? "active" : ""}`}
             onClick={() => setActiveTab("communities")}
           >
-            <span>Communities & Groups</span>
+            <span>Communities</span>
             <span className="network-nav-badge">{displayedCommunities.length}</span>
           </div>
           {connectionData.pending_received.length > 0 && (
@@ -326,22 +349,89 @@ export default function Network() {
             </div>
           )}
 
-          {/* Communities & Groups */}
+          {membershipRequests.length > 0 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>
+                Community membership requests ({membershipRequests.length})
+              </h3>
+              <p className="text-sm muted" style={{ margin: "0 0 14px" }}>
+                Review requests to join communities you manage. You can leave requests pending.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {membershipRequests.map((request) => (
+                  <div key={request.id} className="community-request-row">
+                    <div>
+                      <strong>{request.full_name}</strong>
+                      <p className="text-xs muted">@{request.username} · {request.community_name}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => handleRespondToJoinRequest(request.id, "allow")}>
+                        Allow
+                      </button>
+                      <button className="btn btn-outline btn-sm" onClick={() => handleRespondToJoinRequest(request.id, "deny")}>
+                        Deny
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {communityInvitations.length > 0 && (
+            <div className="card" style={{ marginBottom: 20 }}>
+              <h3 style={{ margin: "0 0 12px", fontSize: 16 }}>
+                Community invitations ({communityInvitations.length})
+              </h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {communityInvitations.map((invitation) => (
+                  <div key={invitation.id} className="community-request-row">
+                    <div>
+                      <strong>{invitation.community_name}</strong>
+                      <p className="text-xs muted">Invited by {invitation.inviter_name}</p>
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => handleRespondToCommunityInvitation(invitation.id, "accept")}>
+                        Accept
+                      </button>
+                      <button className="btn btn-outline btn-sm" onClick={() => handleRespondToCommunityInvitation(invitation.id, "decline")}>
+                        Decline
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Community discovery */}
           {(activeTab === "all" || activeTab === "communities") && (
             <div className="card" style={{ marginBottom: 20 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16 }}>Communities & Knowledge Groups</h3>
+                  <h3 style={{ margin: 0, fontSize: 16 }}>Communities</h3>
                   <p className="text-sm muted" style={{ margin: "2px 0 0" }}>
-                    Collaborate on projects, share domain expertise, and participate in open discussions
+                    {communitySearchQuery
+                      ? "Community search results"
+                      : "Recommended for your interests, alongside communities you have joined"}
                   </p>
                 </div>
-                <button
-                  className="btn btn-outline btn-sm"
-                  onClick={() => setShowCreateModal(!showCreateModal)}
-                >
-                  {showCreateModal ? "Cancel" : "+ Create Community"}
-                </button>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <input
+                    className="input"
+                    aria-label="Search communities"
+                    placeholder="Search communities..."
+                    value={communitySearchQuery}
+                    onChange={(event) => setCommunitySearchQuery(event.target.value)}
+                    style={{ width: 220 }}
+                  />
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => setShowCreateModal(!showCreateModal)}
+                  >
+                    {showCreateModal ? "Cancel" : "+ Create Community"}
+                  </button>
+                </div>
               </div>
 
               {/* Create Community Form */}
@@ -356,7 +446,7 @@ export default function Network() {
                     marginBottom: 16,
                   }}
                 >
-                  <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>Create New Community / Group</h4>
+                  <h4 style={{ margin: "0 0 10px", fontSize: 14 }}>Create a community</h4>
                   <div className="form-group" style={{ marginBottom: 10 }}>
                     <label className="text-sm font-semibold">Community Name</label>
                     <input
@@ -369,15 +459,14 @@ export default function Network() {
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 10 }}>
-                    <label className="text-sm font-semibold">Community Type</label>
+                    <label className="text-sm font-semibold">Who can join?</label>
                     <select
                       className="input"
                       value={newComm.community_type}
                       onChange={(e) => setNewComm({ ...newComm, community_type: e.target.value })}
                     >
-                      <option value="opensource">Open-Source Project</option>
-                      <option value="public">Public Community</option>
-                      <option value="private">Private Group</option>
+                      <option value="public">Anyone can join</option>
+                      <option value="private">Request admin approval</option>
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 12 }}>
@@ -407,39 +496,70 @@ export default function Network() {
                       <div>
                         <div className="community-meta-title">
                           {comm.name}
-                          <span
-                            className={`community-pill ${
-                              comm.community_type === "opensource"
-                                ? "opensource"
-                                : comm.community_type === "private"
-                                ? "private"
-                                : "public"
-                            }`}
-                          >
-                            {comm.community_type === "opensource" ? "Open Source" : comm.community_type}
-                          </span>
                         </div>
                         <p className="community-meta-desc">
-                          {comm.description || "Active professional discussion group"}
+                          {comm.description || "Active professional discussion community"}
                         </p>
                         <span className="text-xs muted">
-                          {comm.members_count || 1} members
+                          {comm.members_count || 0} members
+                          {comm.community_type === "private" ? " · Admin approval required" : ""}
+                          {comm.pending_join_requests_count > 0 ? ` · ${comm.pending_join_requests_count} pending requests` : ""}
                         </span>
                       </div>
                     </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        className={`btn btn-sm ${comm.is_member ? "btn-outline" : "btn-primary"}`}
-                        onClick={() => handleToggleCommunity(comm.id, comm.isCurated)}
-                      >
-                        {comm.is_member ? "Joined" : "Join"}
-                      </button>
-                      <Link
-                        to={`/messages?community=${comm.id}`}
-                        className="btn btn-ghost btn-sm"
-                      >
-                        Group Chat
-                      </Link>
+                    <div className="community-row-actions">
+                      {comm.is_member ? (
+                        <button className="btn btn-outline btn-sm" onClick={() => handleToggleCommunity(comm.id)}>
+                          Leave Community
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn-primary btn-sm"
+                          onClick={() => handleToggleCommunity(comm.id)}
+                          disabled={comm.join_request_status === "pending"}
+                        >
+                          {comm.join_request_status === "pending"
+                            ? "Request pending"
+                            : comm.community_type === "private"
+                              ? "Request to join"
+                              : "Join Community"}
+                        </button>
+                      )}
+                      {(comm.is_member || comm.community_type === "public") && (
+                        <Link
+                          to={`/messages?community=${comm.id}`}
+                          className="btn btn-ghost btn-sm"
+                        >
+                          Community chat
+                        </Link>
+                      )}
+                      {comm.creator === profile?.user_id && connectionData.connections.length > 0 && (
+                        <div className="community-invite-control">
+                          <select
+                            className="input"
+                            aria-label={`Choose a connection to invite to ${comm.name}`}
+                            value={inviteSelections[comm.id] || ""}
+                            onChange={(event) => setInviteSelections((current) => ({
+                              ...current,
+                              [comm.id]: event.target.value,
+                            }))}
+                          >
+                            <option value="">Invite a connection…</option>
+                            {connectionData.connections.map((connection) => {
+                              const userId = connection.from_user === profile.user_id
+                                ? connection.to_user
+                                : connection.from_user;
+                              const userName = connection.from_user === profile.user_id
+                                ? connection.to_user_name
+                                : connection.from_user_name;
+                              return <option key={userId} value={userId}>{userName}</option>;
+                            })}
+                          </select>
+                          <button className="btn btn-ghost btn-sm" onClick={() => handleInviteToCommunity(comm.id)}>
+                            Invite
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -476,6 +596,7 @@ export default function Network() {
               ) : (
                 <div className="network-people-grid">
                   {displayedPeople.map((person) => {
+                    const request = connectionData.pending_sent.find((item) => item.to_user === person.id);
                     const isConnected = sentRequests.has(person.id);
 
                     return (
@@ -502,20 +623,19 @@ export default function Network() {
                           <button
                             className={`btn btn-sm ${isConnected ? "btn-outline" : "btn-primary"}`}
                             style={{ width: "100%" }}
-                            onClick={() => handleConnect(person.id, person.isCurated)}
-                            disabled={isConnected}
+                            onClick={() => request
+                              ? handleWithdrawConnection(request.id, person.id)
+                              : handleConnect(person.id)}
                           >
-                            {isConnected ? "Invitation Sent" : "+ Connect"}
+                            {request ? "Withdraw request" : isConnected ? "Request sent" : "+ Connect"}
                           </button>
-                          {!person.isCurated && (
-                            <Link
-                              to={`/profile/${person.id}`}
-                              className="btn btn-ghost btn-sm text-xs"
-                              style={{ width: "100%", padding: "4px" }}
-                            >
-                              View Profile
-                            </Link>
-                          )}
+                          <Link
+                            to={`/profile/${person.id}`}
+                            className="btn btn-ghost btn-sm text-xs"
+                            style={{ width: "100%", padding: "4px" }}
+                          >
+                            View Profile
+                          </Link>
                         </div>
                       </div>
                     );
@@ -539,17 +659,16 @@ export default function Network() {
                 <div className="empty-state" style={{ padding: "32px 0", textAlign: "center" }}>
                   <p className="muted" style={{ fontWeight: 600 }}>You haven't established connections yet.</p>
                   <p className="text-sm muted" style={{ maxWidth: 440, margin: "6px auto 16px" }}>
-                    Sending invitations to peers in your domain gives you direct messaging access and ranks their updates higher in your feed.
+                    Connect with professionals to build your network and open direct messaging.
                   </p>
-                  <button
-                    className="btn btn-outline btn-sm"
-                    onClick={() => {
-                      const firstPerson = displayedPeople[0];
-                      if (firstPerson) handleConnect(firstPerson.id, firstPerson.isCurated);
-                    }}
-                  >
-                    Connect with Featured Professionals Above ↑
-                  </button>
+                  {displayedPeople.length > 0 && (
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => handleConnect(displayedPeople[0].id)}
+                    >
+                      Connect with a suggested professional
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -613,9 +732,9 @@ export default function Network() {
                     }}
                   >
                     <span style={{ fontSize: 13.5, fontWeight: 600 }}>{c.to_user_name}</span>
-                    <span className="badge" style={{ background: "#FEF3C7", color: "#92400E" }}>
-                      Pending Acceptance
-                    </span>
+                    <button className="btn btn-outline btn-sm" onClick={() => handleWithdrawConnection(c.id, c.to_user)}>
+                      Withdraw request
+                    </button>
                   </div>
                 ))}
               </div>
