@@ -12,18 +12,13 @@ python-docx==1.2.0
 pdfminer.six==20250506
 Pillow==11.3.0
 
-numpy==2.3.2
-scipy==1.16.1
-joblib==1.5.2
-threadpoolctl==3.6.0
+# ML / ATS engine — only what is actually imported in the codebase
+numpy>=1.26,<3
+scipy>=1.13,<2
+joblib>=1.4
+threadpoolctl>=3.1
 
-scikit-learn==1.7.1
-
-xgboost==3.0.4
-
-torch==2.8.0
-transformers==4.55.0
-sentence-transformers==5.1.0
+scikit-learn>=1.5,<2
 
 social-auth-app-django==5.4.3
 
