@@ -308,13 +308,7 @@ class PasswordResetRequestView(APIView):
             return Response({"detail": "Email required."}, status=status.HTTP_400_BAD_REQUEST)
         email = email.strip()
 
-        frontend_url = settings.FRONTEND_URL
-        if not frontend_url and not settings.DEBUG:
-            logger.error("Password reset is unavailable because FRONTEND_URL is not configured.")
-            return Response(
-                {"detail": "Password reset is temporarily unavailable. Please try again later."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        frontend_url = settings.FRONTEND_URL or "https://apply-genhire.vercel.app"
 
         if (
             settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
@@ -322,7 +316,7 @@ class PasswordResetRequestView(APIView):
         ):
             logger.error("Password reset is unavailable because SMTP email settings are incomplete.")
             return Response(
-                {"detail": "Password reset is temporarily unavailable. Please try again later."},
+                {"detail": "Email service is not yet configured on the server. Please set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD in Render."},
                 status=status.HTTP_503_SERVICE_UNAVAILABLE,
             )
 

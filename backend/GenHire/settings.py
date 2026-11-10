@@ -176,15 +176,28 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
     "http://localhost:3000",
+    "https://apply-genhire.vercel.app",
 ]
-FRONTEND_URL = os.environ.get("FRONTEND_URL")
-if FRONTEND_URL:
-    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL.rstrip("/"))
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
+if FRONTEND_URL and FRONTEND_URL not in CORS_ALLOWED_ORIGINS:
+    CORS_ALLOWED_ORIGINS.append(FRONTEND_URL)
+
+# Allow any Vercel preview/production deployment automatically
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https:\/\/.*\.vercel\.app$",
+    r"^https:\/\/apply-genhire.*\.vercel\.app$",
+    r"^https:\/\/gen-hire.*\.vercel\.app$",
+]
 
 CORS_ALLOW_ALL_ORIGINS = os.environ.get("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
 CORS_ALLOW_CREDENTIALS = True
 
-CSRF_TRUSTED_ORIGINS = [origin for origin in [FRONTEND_URL] if origin]
+_csrf_origins = [o for o in [FRONTEND_URL] if o]
+_csrf_origins.extend([
+    "https://apply-genhire.vercel.app",
+    "https://gen-hire-sandy.vercel.app",
+])
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(_csrf_origins))
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = True

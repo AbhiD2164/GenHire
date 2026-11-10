@@ -10,22 +10,26 @@ import {
 } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDummyKeyForDevelopment12345",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "genhire-app.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "genhire-app",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "genhire-app.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "1234567890",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:1234567890:web:abcdef123456",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || import.meta.env.FIREBASE_API_KEY || "",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || import.meta.env.FIREBASE_AUTH_DOMAIN || "",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || import.meta.env.FIREBASE_PROJECT_ID || "",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || import.meta.env.FIREBASE_STORAGE_BUCKET || "",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || import.meta.env.FIREBASE_MESSAGING_SENDER_ID || "",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || import.meta.env.FIREBASE_APP_ID || "",
 };
 
-let app;
-let auth;
+let app = null;
+let auth = null;
 
-try {
-  app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
-  auth = getAuth(app);
-} catch (e) {
-  console.warn("Firebase client initialization deferred:", e);
+if (firebaseConfig.apiKey) {
+  try {
+    app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
+    auth = getAuth(app);
+  } catch (e) {
+    console.warn("Firebase initialization deferred:", e);
+  }
+} else {
+  console.warn("Firebase API key not found in environment variables. Set VITE_FIREBASE_API_KEY in your hosting dashboard.");
 }
 
 const googleProvider = new GoogleAuthProvider();
@@ -33,14 +37,14 @@ const googleProvider = new GoogleAuthProvider();
 export { auth, googleProvider };
 
 export async function loginWithFirebaseGoogle() {
-  if (!auth) throw new Error("Firebase auth is not initialized");
+  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
   const result = await signInWithPopup(auth, googleProvider);
   const idToken = await result.user.getIdToken();
   return { user: result.user, idToken };
 }
 
 export async function registerWithFirebaseEmail(email, password) {
-  if (!auth) throw new Error("Firebase auth is not initialized");
+  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   try {
     await sendEmailVerification(cred.user);
@@ -52,13 +56,13 @@ export async function registerWithFirebaseEmail(email, password) {
 }
 
 export async function loginWithFirebaseEmail(email, password) {
-  if (!auth) throw new Error("Firebase auth is not initialized");
+  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
   const cred = await signInWithEmailAndPassword(auth, email, password);
   const idToken = await cred.user.getIdToken();
   return { user: cred.user, idToken };
 }
 
 export async function sendFirebasePasswordReset(email) {
-  if (!auth) throw new Error("Firebase auth is not initialized");
+  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
   await sendPasswordResetEmail(auth, email);
 }

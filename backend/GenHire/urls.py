@@ -13,7 +13,30 @@ def health_check(request):
     except Exception:
         return JsonResponse({"status": "degraded", "database": "unavailable"}, status=503)
 
+
+def api_root(request):
+    """Friendly response for the backend root URL.
+    Visiting the Render service URL directly in a browser shows this.
+    The actual application runs at the Vercel frontend URL.
+    """
+    return JsonResponse({
+        "service": "GenHire API",
+        "status": "running",
+        "version": "1.0.0",
+        "frontend": "https://apply-genhire.vercel.app",
+        "health": "/health/",
+        "api": {
+            "auth":    "/api/auth/",
+            "jobs":    "/api/jobs/",
+            "ats":     "/api/ats/",
+            "network": "/api/network/",
+        },
+        "note": "This is a REST API backend. Open the frontend URL above to use the application.",
+    })
+
+
 urlpatterns = [
+    path("", api_root, name="api_root"),
     path("health/", health_check, name="health_check"),
     path("admin/", admin.site.urls),
 

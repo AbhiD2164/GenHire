@@ -55,7 +55,10 @@ export default function GoogleSignInButton({ onSuccess }) {
   }
 
   async function handleClick() {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    const clientId =
+      import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+      import.meta.env.GOOGLE_CLIENT_ID ||
+      "";
     if (!clientId) return showToast("Missing Google client ID.", "error");
 
     setLoading(true);

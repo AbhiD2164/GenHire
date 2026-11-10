@@ -35,6 +35,8 @@ def _init_firebase():
     _firebase_init_attempted = True
 
     try:
+        import json as _json
+
         import firebase_admin
         from firebase_admin import credentials
 
@@ -43,18 +45,30 @@ def _init_firebase():
             _firebase_app = firebase_admin.get_app()
             return True
 
+        # ── Priority 1: raw JSON in env var (Render / Railway / any PaaS) ──────
+        raw_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+        if raw_json:
+            try:
+                cred_dict = _json.loads(raw_json)
+                cred = credentials.Certificate(cred_dict)
+                _firebase_app = firebase_admin.initialize_app(cred)
+                logger.info("Firebase Admin SDK initialised from FIREBASE_SERVICE_ACCOUNT_JSON env var.")
+                return True
+            except Exception as exc:
+                logger.warning("FIREBASE_SERVICE_ACCOUNT_JSON parsing failed: %s", exc)
+
+        # ── Priority 2: file path on disk (local development) ─────────────────
         cred_path = getattr(settings, "FIREBASE_CREDENTIALS_PATH", "")
         project_id = getattr(settings, "FIREBASE_PROJECT_ID", "")
 
         if cred_path:
-            # Resolve relative paths against BASE_DIR (backend root)
             p = Path(cred_path)
             if not p.is_absolute():
                 p = Path(settings.BASE_DIR) / cred_path
             if p.exists():
                 cred = credentials.Certificate(str(p))
                 _firebase_app = firebase_admin.initialize_app(cred)
-                logger.info("Firebase Admin SDK initialised with service-account credentials.")
+                logger.info("Firebase Admin SDK initialised with service-account file.")
                 return True
             else:
                 logger.warning(
@@ -63,13 +77,15 @@ def _init_firebase():
                     p,
                 )
 
+        # ── Priority 3: project-id only (limited — no token verification) ──────
         if project_id:
             _firebase_app = firebase_admin.initialize_app(options={"projectId": project_id})
             logger.info("Firebase Admin SDK initialised with project_id only (no service-account).")
             return True
 
         logger.warning(
-            "Firebase Admin SDK not configured (no FIREBASE_CREDENTIALS_PATH or FIREBASE_PROJECT_ID). "
+            "Firebase Admin SDK not configured. "
+            "Set FIREBASE_SERVICE_ACCOUNT_JSON (production) or FIREBASE_CREDENTIALS_PATH (local). "
             "Google sign-in will use the tokeninfo fallback."
         )
 
