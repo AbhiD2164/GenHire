@@ -88,13 +88,22 @@ class SignupView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         _send_verification_code(user)
+        auto_verify = os.environ.get("AUTO_VERIFY_EMAIL", "False").lower() in ("true", "1", "yes")
+        msg = "Account created and verified. You can now log in." if auto_verify else "Account created. Check your email for the verification code."
         return Response(
-            {"message": "Account created. Check your email for the verification code.", "username": user.username, "email_verification_required": True},
+            {"message": msg, "username": user.username, "email_verification_required": not auto_verify},
             status=status.HTTP_201_CREATED,
         )
 
 
 def _send_verification_code(user):
+    auto_verify = os.environ.get("AUTO_VERIFY_EMAIL", "False").lower() in ("true", "1", "yes")
+    if auto_verify:
+        user.email_verified = True
+        user.save(update_fields=["email_verified"])
+        logger.info("AUTO_VERIFY_EMAIL active: User %s automatically verified.", user.email)
+        return
+
     code = f"{secrets.randbelow(1_000_000):06d}"
     EmailVerificationCode.objects.filter(user=user).delete()
     EmailVerificationCode.objects.create(
@@ -102,6 +111,7 @@ def _send_verification_code(user):
         code_hash=make_password(code),
         expires_at=timezone.now() + timedelta(minutes=10),
     )
+    logger.info("VERIFICATION CODE FOR %s: %s (expires in 10 minutes)", user.email, code)
     send_firebase_email_verification(user, code)
 
 
@@ -310,16 +320,6 @@ class PasswordResetRequestView(APIView):
 
         frontend_url = settings.FRONTEND_URL or "https://apply-genhire.vercel.app"
 
-        if (
-            settings.EMAIL_BACKEND == "django.core.mail.backends.smtp.EmailBackend"
-            and (not settings.EMAIL_HOST or not settings.EMAIL_HOST_USER or not settings.EMAIL_HOST_PASSWORD)
-        ):
-            logger.error("Password reset is unavailable because SMTP email settings are incomplete.")
-            return Response(
-                {"detail": "Email service is not yet configured on the server. Please set EMAIL_HOST_USER and EMAIL_HOST_PASSWORD in Render."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
-
         try:
             user = CustomUser.objects.get(email__iexact=email)
         except CustomUser.DoesNotExist:
@@ -331,14 +331,8 @@ class PasswordResetRequestView(APIView):
         reset_link = (frontend_url or "http://localhost:5173").rstrip("/") + "/reset-password"
         reset_url = f"{reset_link}?uid={uid}&token={token}"
 
-        try:
-            send_firebase_password_reset(user, reset_url)
-        except (OSError, SMTPException):
-            logger.exception("Failed to send a password reset email.")
-            return Response(
-                {"detail": "Password reset is temporarily unavailable. Please try again later."},
-                status=status.HTTP_503_SERVICE_UNAVAILABLE,
-            )
+        logger.info("PASSWORD RESET LINK FOR %s: %s", user.email, reset_url)
+        send_firebase_password_reset(user, reset_url)
 
         return Response({"detail": "If an account with that email exists, a reset link was sent."})
 

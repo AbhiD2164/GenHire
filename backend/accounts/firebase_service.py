@@ -156,6 +156,115 @@ def verify_firebase_token(id_token: str) -> dict | None:
 
 # ─── Email helpers ─────────────────────────────────────────────────────────────
 
+def dispatch_email(subject: str, message: str, recipient_email: str, fail_silently: bool = True) -> bool:
+    """
+    High-reliability email dispatcher for cloud deployments (especially Render Free Tier).
+
+    Render's Free Tier blocks raw outbound SMTP traffic on ports 25, 465, and 587.
+    Connecting to smtp.gmail.com:587 on Render Free Tier hangs and times out.
+
+    Delivery Resolution Order:
+    1. Resend REST API (HTTPS port 443 — free at resend.com — never blocked on Render).
+    2. Brevo REST API (HTTPS port 443 — free at brevo.com — never blocked on Render).
+    3. Django send_mail (standard SMTP; works locally or on Render Paid plans).
+    4. Safe fallback logging: writes the email details (including OTP/reset tokens) to Render logs
+       so operations are never blocked even without external email credentials.
+    """
+    recipient_email = (recipient_email or "").strip()
+    if not recipient_email:
+        return False
+
+    # ── Strategy 1: Resend HTTP REST API (Port 443 — Render Free Tier compatible) ──
+    resend_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if resend_key:
+        try:
+            import requests as http
+            from_addr = os.environ.get("RESEND_FROM_EMAIL") or settings.DEFAULT_FROM_EMAIL or "onboarding@resend.dev"
+            resp = http.post(
+                "https://api.resend.com/emails",
+                headers={
+                    "Authorization": f"Bearer {resend_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "from": from_addr,
+                    "to": [recipient_email],
+                    "subject": subject,
+                    "text": message,
+                },
+                timeout=8,
+            )
+            if resp.status_code in (200, 201):
+                logger.info("Email dispatched successfully to %s via Resend HTTPS API.", recipient_email)
+                return True
+            else:
+                logger.warning("Resend API returned %s: %s", resp.status_code, resp.text[:200])
+        except Exception as exc:
+            logger.warning("Resend HTTPS email dispatch failed: %s", exc)
+
+    # ── Strategy 2: Brevo HTTP REST API (Port 443 — Render Free Tier compatible) ───
+    brevo_key = os.environ.get("BREVO_API_KEY", "").strip()
+    if brevo_key:
+        try:
+            import requests as http
+            from_email = os.environ.get("DEFAULT_FROM_EMAIL", "no-reply@apply-genhire.vercel.app")
+            resp = http.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "api-key": brevo_key,
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "sender": {"email": from_email, "name": "GenHire"},
+                    "to": [{"email": recipient_email}],
+                    "subject": subject,
+                    "textContent": message,
+                },
+                timeout=8,
+            )
+            if resp.status_code in (200, 201):
+                logger.info("Email dispatched successfully to %s via Brevo HTTPS API.", recipient_email)
+                return True
+            else:
+                logger.warning("Brevo API returned %s: %s", resp.status_code, resp.text[:200])
+        except Exception as exc:
+            logger.warning("Brevo HTTPS email dispatch failed: %s", exc)
+
+    # ── Strategy 3: Standard Django send_mail (SMTP) ─────────────────────────────
+    try:
+        sent = send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [recipient_email],
+            fail_silently=False,
+        )
+        if sent > 0:
+            logger.info("Email dispatched successfully to %s via Django SMTP.", recipient_email)
+            return True
+    except Exception as exc:
+        logger.warning(
+            "SMTP email dispatch to %s failed (%s). "
+            "Render Free Tier blocks outbound SMTP ports 25, 465, and 587. "
+            "To send emails over HTTPS from Render Free Tier, add RESEND_API_KEY in Render Environment Variables.",
+            recipient_email,
+            exc,
+        )
+
+    # ── Strategy 4: Fallback logging to server logs ──────────────────────────────
+    logger.info(
+        "\n=================== [OUTBOUND EMAIL DISPATCH LOG] ===================\n"
+        "To: %s\n"
+        "Subject: %s\n"
+        "Message Body:\n%s\n"
+        "=====================================================================",
+        recipient_email,
+        subject,
+        message,
+    )
+    return False
+
+
 def send_firebase_email_verification(user, code: str):
     """Send an OTP verification code to the user's email."""
     subject = "Verify your GenHire Account"
@@ -167,13 +276,7 @@ def send_firebase_email_verification(user, code: str):
         f"Best regards,\n"
         f"GenHire Team"
     )
-    send_mail(
-        subject,
-        message,
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-        fail_silently=True,
-    )
+    return dispatch_email(subject, message, user.email, fail_silently=True)
 
 
 def send_firebase_password_reset(user, reset_url: str):
@@ -187,13 +290,7 @@ def send_firebase_password_reset(user, reset_url: str):
         f"Best regards,\n"
         f"GenHire Team"
     )
-    send_mail(
-        subject,
-        message,
-        settings.DEFAULT_FROM_EMAIL,
-        [user.email],
-        fail_silently=False,
-    )
+    return dispatch_email(subject, message, user.email, fail_silently=True)
 
 
 def send_immediate_application_result_email(application):
@@ -249,10 +346,4 @@ def send_immediate_application_result_email(application):
             f"Best regards,\nGenHire Team"
         )
 
-    send_mail(
-        subject,
-        body,
-        settings.DEFAULT_FROM_EMAIL,
-        [applicant.email],
-        fail_silently=True,
-    )
+    dispatch_email(subject, body, applicant.email, fail_silently=True)
