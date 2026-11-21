@@ -234,8 +234,8 @@ export default function Network() {
           id: p.id,
           displayName: p.first_name && p.last_name ? `${p.first_name} ${p.last_name}` : p.username,
           username: p.username,
-          headline: p.headline || "GenHire Professional",
-          industry: p.industry || p.location || "Professional Member",
+          headline: p.headline || (p.industry ? `${p.industry} Specialist` : (p.location ? `Professional in ${p.location}` : "Member")),
+          industry: p.industry || p.location || "Member",
           avatar: p.avatar,
           initial: (p.first_name || p.username || "U").charAt(0).toUpperCase(),
         })).filter((p) => {
@@ -326,7 +326,7 @@ export default function Network() {
                     <div>
                       <strong style={{ fontSize: 15 }}>{c.from_user_name}</strong>
                       <p className="text-sm muted" style={{ margin: "2px 0 0" }}>
-                        {c.from_user_headline || "GenHire Professional"}
+                        {c.from_user_headline || "Member"}
                       </p>
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>

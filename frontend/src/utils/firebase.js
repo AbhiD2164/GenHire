@@ -37,14 +37,14 @@ const googleProvider = new GoogleAuthProvider();
 export { auth, googleProvider };
 
 export async function loginWithFirebaseGoogle() {
-  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
+  if (!auth) throw new Error("Google authentication service is currently unavailable. Please use email and password.");
   const result = await signInWithPopup(auth, googleProvider);
   const idToken = await result.user.getIdToken();
   return { user: result.user, idToken };
 }
 
 export async function registerWithFirebaseEmail(email, password) {
-  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
+  if (!auth) throw new Error("Authentication service is currently unavailable. Please try again later.");
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   try {
     await sendEmailVerification(cred.user);
@@ -56,13 +56,13 @@ export async function registerWithFirebaseEmail(email, password) {
 }
 
 export async function loginWithFirebaseEmail(email, password) {
-  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
+  if (!auth) throw new Error("Authentication service is currently unavailable. Please try again later.");
   const cred = await signInWithEmailAndPassword(auth, email, password);
   const idToken = await cred.user.getIdToken();
   return { user: cred.user, idToken };
 }
 
 export async function sendFirebasePasswordReset(email) {
-  if (!auth) throw new Error("Firebase authentication is not configured. Please check Vercel environment variables.");
+  if (!auth) throw new Error("Authentication service is currently unavailable. Please try again later.");
   await sendPasswordResetEmail(auth, email);
 }

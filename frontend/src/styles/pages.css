@@ -1356,3 +1356,16 @@
     max-width: none;
   }
 }
+
+.resume-analysis-grid {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+@media (max-width: 860px) {
+  .resume-analysis-grid {
+    grid-template-columns: 1fr;
+  }
+}

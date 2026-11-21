@@ -4,6 +4,20 @@ import { useAuth } from "../context/AuthContext";
 import { useToast } from "../context/ToastContext";
 import { loginWithFirebaseGoogle } from "../utils/firebase";
 
+function getFriendlyErrorMessage(err, defaultMsg) {
+  const raw = String(err?.message || err?.response?.data?.detail || err || "");
+  if (raw.includes("auth/api-key-not-valid") || raw.includes("Firebase") || raw.includes("api-key") || raw.includes("Vercel")) {
+    return "Google sign-in is temporarily unavailable. Please sign in with your email and password below.";
+  }
+  if (raw.includes("auth/popup-closed-by-user") || raw.includes("cancelled")) {
+    return "Sign-in was closed before completing.";
+  }
+  if (raw.includes("auth/network-request-failed")) {
+    return "Network error. Please check your internet connection.";
+  }
+  return err?.response?.data?.detail || defaultMsg;
+}
+
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -21,7 +35,7 @@ export default function Login() {
       showToast("Welcome back!", "success");
       navigate("/feed");
     } catch (err) {
-      const msg = err.response?.data?.detail || "Invalid credentials. Please verify your email/username and password.";
+      const msg = getFriendlyErrorMessage(err, "Invalid credentials. Please verify your email/username and password.");
       showToast(msg, "error");
     } finally {
       setSubmitting(false);
@@ -36,7 +50,8 @@ export default function Login() {
       showToast("Signed in successfully with Google!", "success");
       navigate("/feed");
     } catch (err) {
-      showToast(err.message || "Google sign-in could not be completed.", "error");
+      const msg = getFriendlyErrorMessage(err, "Google sign-in could not be completed. Please use email and password.");
+      showToast(msg, "error");
     } finally {
       setGoogleLoading(false);
     }
@@ -46,7 +61,7 @@ export default function Login() {
     <div className="auth-shell">
       <div className="auth-card card" style={{ maxWidth: 440, width: "100%", margin: "40px auto" }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <span className="eyebrow" style={{ margin: "0 auto 6px" }}>Unified Access</span>
+          <span className="eyebrow" style={{ margin: "0 auto 6px" }}>Welcome Back</span>
           <h1 style={{ fontSize: 24, margin: "0 0 6px", fontWeight: 800 }}>Sign In to GenHire</h1>
           <p className="muted text-sm" style={{ margin: 0 }}>
             Stay connected to your professional network and career opportunities.

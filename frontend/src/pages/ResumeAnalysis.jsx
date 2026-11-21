@@ -43,7 +43,7 @@ export default function ResumeAnalysis() {
         </p>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24, alignItems: "flex-start" }}>
+      <div className="resume-analysis-grid">
         {/* Left Column: Upload Form & Results */}
         <div style={{ minWidth: 0 }}>
           <div className="card" style={{ padding: 22, marginBottom: 20 }}>

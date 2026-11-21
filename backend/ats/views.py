@@ -13,6 +13,7 @@ from accounts.verification import verify_candidate_resume_security
 from accounts.firebase_service import send_immediate_application_result_email
 from .engine import process_resume
 from .text_extraction import extract_resume_text
+from .experience_extraction import extract_experience_segments, months_to_label
 from .skill_extraction import parse_skill_list, extract_present_skills, SKILL_SYNONYMS
 from .rabbitmq_cache import compute_runtime_suggestions
 
@@ -195,18 +196,41 @@ class ResumeAnalysisView(APIView):
             tips.append(f"Strong measurable accomplishments detected: {len(quantified_achievements)} quantified impacts identified.")
         tips.append(f"Highlight specialized {detected_industry} certifications and domain-specific tool proficiencies.")
 
-        # 5. Tailored Job Description Generation
+        # 5. Career Stage & Tailored Job Profile (dynamically calculated from experience & education)
+        segments, total_months = extract_experience_segments(raw)
+        raw_lower = raw.lower()
+        is_fresher_keywords = any(
+            re.search(r"\b" + re.escape(kw) + r"\b", raw_lower)
+            for kw in ["fresher", "intern", "internship", "graduate", "student", "entry level", "entry-level", "trainee", "apprentice"]
+        )
+
+        if total_months < 12 or is_fresher_keywords:
+            career_stage = "Entry-Level / Graduate Associate"
+            scope_text = "Contribute to core organizational projects, learn industry workflows under mentorship, and apply foundational methodologies to deliver quality results."
+        elif total_months < 36:
+            career_stage = "Associate Specialist"
+            scope_text = "Execute operational and technical deliverables, collaborate effectively with project teams, and apply established domain methodologies."
+        elif total_months < 72:
+            career_stage = "Mid-Level Specialist"
+            scope_text = "Take ownership of end-to-end deliverables, guide junior teammates, and solve complex challenges within the domain."
+        else:
+            career_stage = "Senior Specialist / Lead"
+            scope_text = "Drive high-impact organizational initiatives, collaborate with leadership, and architect robust domain solutions."
+
         sample_jd = (
-            f"Opportunity: Senior Specialist ({detected_industry})\n"
-            f"Key Requirements: {', '.join(present_skills[:6]) if present_skills else 'Demonstrated professional competency'}.\n"
-            f"Scope: Drive high-impact organizational initiatives, collaborate with cross-functional leadership, "
-            f"and apply specialized {detected_industry.lower()} domain methodologies to accelerate business results."
+            f"Target Profile: {career_stage} ({detected_industry})\n"
+            f"Experience Detected: {months_to_label(total_months) if total_months else 'Entry-Level / Fresher'}\n"
+            f"Key Requirements: {', '.join(present_skills[:6]) if present_skills else 'Demonstrated foundational competency'}.\n"
+            f"Scope: {scope_text}"
         )
 
         return Response({
             "valid": True,
             "score": score,
             "score_percentage": score_pct,
+            "career_stage": career_stage,
+            "experience_detected": months_to_label(total_months) if total_months else "Entry-Level / Fresher",
+            "total_experience_months": total_months,
             "detected_industry": detected_industry,
             "industry_breakdown": matched_by_industry,
             "present_skills": present_skills,

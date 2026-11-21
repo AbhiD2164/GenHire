@@ -97,7 +97,7 @@ export default function Dashboard() {
                   </span>
                 ) : (
                   <span className="badge" style={{ background: "#E0F2FE", color: "#0369A1" }}>
-                    Professional member
+                    {profile.headline || profile.industry || "Member"}
                   </span>
                 )}
               </div>

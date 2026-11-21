@@ -92,12 +92,14 @@ export default function JobApplications() {
             Review applicants, inspect parsed resume skills and scores, and update each application.
           </p>
         </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-          <option value="">All application statuses</option>
-          <option value="selected">Selected only</option>
-          <option value="applied">In review (applied) only</option>
-          <option value="rejected">Rejected only</option>
-        </select>
+        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ padding: "8px 14px", borderRadius: 8, border: "1px solid var(--border)" }}>
+            <option value="">All Applications</option>
+            <option value="selected">Selected (80%+ Match)</option>
+            <option value="applied">In Review (60-79% Match)</option>
+            <option value="rejected">Filtered Out (Under 60% / Declined)</option>
+          </select>
+        </div>
       </div>
 
       {loading ? (

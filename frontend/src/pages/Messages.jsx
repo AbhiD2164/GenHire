@@ -71,7 +71,7 @@ export default function Messages() {
           myConnections().catch(() => ({ connections: [] })),
         ]);
         const commData = (Array.isArray(communityData) ? communityData : communityData?.results || [])
-          .filter((community) => community.is_member || community.community_type === "public");
+          .filter((community) => community.is_member);
 
         setConversations(convData || []);
         setCommunities(commData || []);

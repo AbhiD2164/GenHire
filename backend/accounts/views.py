@@ -76,12 +76,14 @@ class EmailTokenObtainPairSerializer(TokenObtainPairSerializer):
 class LoginView(TokenObtainPairView):
     serializer_class = EmailTokenObtainPairSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "login"
 
 
 class SignupView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     serializer_class = SignupSerializer
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "signup"
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -117,6 +119,7 @@ def _send_verification_code(user):
 
 class EmailVerificationRequestView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "signup"
 
     def post(self, request):
         email = request.data.get("email", "").strip()
@@ -311,6 +314,7 @@ class PeopleSearchView(generics.ListAPIView):
 
 class PasswordResetRequestView(APIView):
     permission_classes = [permissions.AllowAny]
+    throttle_scope = "password_reset"
 
     def post(self, request):
         email = request.data.get("email", "")

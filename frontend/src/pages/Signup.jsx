@@ -62,7 +62,11 @@ export default function Signup() {
       showToast("Signed in successfully!", "success");
       navigate("/feed");
     } catch (err) {
-      showToast(err.message || "Google authentication failed. Please use email & password.", "error");
+      const raw = String(err?.message || "");
+      const friendlyMsg = raw.includes("auth/api-key-not-valid") || raw.includes("Firebase") || raw.includes("api-key")
+        ? "Google authentication is temporarily unavailable. Please complete registration below."
+        : "Google authentication could not be completed. Please use email & password.";
+      showToast(friendlyMsg, "error");
     } finally {
       setGoogleLoading(false);
     }
@@ -72,7 +76,7 @@ export default function Signup() {
     <div className="auth-shell">
       <div className="auth-card card" style={{ maxWidth: 580, width: "100%", margin: "24px auto" }}>
         <div style={{ textAlign: "center", marginBottom: 20 }}>
-          <span className="eyebrow" style={{ margin: "0 auto 6px" }}>Unified Registration</span>
+          <span className="eyebrow" style={{ margin: "0 auto 6px" }}>Get Started</span>
           <h1 style={{ fontSize: 24, margin: "0 0 6px", fontWeight: 800 }}>Create Your GenHire Account</h1>
           <p className="muted text-sm" style={{ margin: 0 }}>
             One professional account for networking, career opportunities, and sharing work.

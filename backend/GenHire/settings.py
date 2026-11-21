@@ -148,10 +148,14 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_CLASSES": (
         "rest_framework.throttling.AnonRateThrottle",
         "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
     ),
     "DEFAULT_THROTTLE_RATES": {
         "anon": "30/minute",
         "user": "300/minute",
+        "login": "5/minute",
+        "password_reset": "3/minute",
+        "signup": "5/minute",
     },
 }
 
@@ -199,6 +203,12 @@ _csrf_origins.extend([
     "https://gen-hire-sandy.vercel.app",
 ])
 CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(_csrf_origins))
+
+# Security & Cyber Attack Prevention
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = "DENY"
+SECURE_BROWSER_XSS_FILTER = True
+SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
 if not DEBUG:
     SECURE_SSL_REDIRECT = True
