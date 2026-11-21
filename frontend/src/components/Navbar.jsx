@@ -8,8 +8,13 @@ export default function Navbar() {
   const [communityRequestCount, setCommunityRequestCount] = useState(0);
   const [notificationCount, setNotificationCount] = useState(0);
   const [searchText, setSearchText] = useState("");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   useEffect(() => {
     if (!profile) {
@@ -117,7 +122,16 @@ export default function Navbar() {
                   </span>
                 )}
               </Link>
-              <button className="btn btn-ghost btn-sm" onClick={handleLogout}>Log out</button>
+              <button className="btn btn-ghost btn-sm nav-logout-desktop" onClick={handleLogout}>Log out</button>
+              <button
+                type="button"
+                className="mobile-menu-toggle"
+                onClick={() => setMobileMenuOpen((open) => !open)}
+                aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+                aria-expanded={mobileMenuOpen}
+              >
+                {mobileMenuOpen ? "✕" : "☰"}
+              </button>
             </>
           ) : (
             <>
@@ -127,6 +141,21 @@ export default function Navbar() {
           )}
         </div>
       </div>
+
+      {profile && mobileMenuOpen && (
+        <nav className="mobile-nav-menu" aria-label="Mobile Navigation">
+          <Link to="/feed" className={isActive("/feed")}>Feed</Link>
+          <Link to="/jobs" className={isActive("/jobs")}>Jobs</Link>
+          <Link to="/people" className={isActive("/people")}>People</Link>
+          <Link to="/network" className={isActive("/network")}>Network</Link>
+          <Link to="/messages" className={isActive("/messages")}>Messages</Link>
+          <Link to="/profile/edit" className={isActive("/profile/edit")}>My Profile</Link>
+          <Link to="/resume-analysis" className={isActive("/resume-analysis")}>Resume ATS</Link>
+          <Link to="/dashboard" className={isActive("/dashboard")}>Dashboard</Link>
+          <div className="mobile-nav-divider" />
+          <button className="btn btn-ghost btn-sm mobile-logout-btn" onClick={handleLogout}>Log out</button>
+        </nav>
+      )}
     </header>
   );
 }

@@ -5,9 +5,13 @@ export default defineConfig(({ mode }) => {
   // Load clean environment variables from .env files
   const env = loadEnv(mode, process.cwd(), '')
 
-  // Safe picker: check process.env (Vercel build env) first, then local .env, then fallback
-  const pick = (key, fallback = '') =>
-    process.env[key] || env[key] || fallback
+  // Safe picker: check process.env (Vercel build env) first, then local .env, then fallback.
+  // Strips accidental wrapping quotes and whitespace that often get pasted in hosting dashboards.
+  const pick = (key, fallback = '') => {
+    const raw = process.env[key] || env[key] || fallback
+    if (typeof raw !== 'string') return raw
+    return raw.trim().replace(/^["']|["']$/g, '').trim()
+  }
 
   return {
     plugins: [react()],

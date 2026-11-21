@@ -47,6 +47,41 @@
 .landing-bottom h2 { max-width: 510px; margin-top: 12px; font-size: 34px; line-height: 1.12; }
 .landing-bottom-actions { display: flex; gap: 10px; }
 
+@media (max-width: 900px) {
+  .landing-hero {
+    padding: 56px 0 48px;
+  }
+  .landing-hero-grid {
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  .landing-copy h1 {
+    font-size: clamp(32px, 8vw, 48px);
+  }
+  .signal-board {
+    transform: none;
+    max-width: 100%;
+  }
+  .landing-highlights {
+    grid-template-columns: 1fr;
+  }
+  .highlight-item {
+    padding: 20px 0;
+  }
+  .highlight-item + .highlight-item {
+    padding-left: 0;
+    border-left: none;
+    border-top: 1px solid var(--border);
+  }
+  .landing-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    padding-top: 48px;
+    padding-bottom: 56px;
+  }
+}
+
 /* ---- Page header ---- */
 .page-header {
   display: flex;

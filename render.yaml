@@ -22,20 +22,29 @@ services:
         sync: false
       - key: DEFAULT_FROM_EMAIL
         sync: false
+      # Render Free Tier blocks outbound SMTP ports 25, 465, 587.
+      # Use console backend so Django doesn't try SMTP at all.
+      # Actual email delivery goes through Resend HTTPS REST API (port 443).
       - key: EMAIL_BACKEND
-        value: django.core.mail.backends.smtp.EmailBackend
+        value: django.core.mail.backends.console.EmailBackend
       - key: EMAIL_HOST
-        sync: false
+        value: ""
       - key: EMAIL_PORT
-        value: "587"
+        value: "443"
       - key: EMAIL_HOST_USER
-        sync: false
+        value: ""
       - key: EMAIL_HOST_PASSWORD
         sync: false
       - key: EMAIL_USE_TLS
-        value: "True"
+        value: "False"
+      - key: EMAIL_TIMEOUT
+        value: "5"
       - key: RABBITMQ_ENABLED
         value: "False"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: AUTO_VERIFY_EMAIL
+        sync: false
       - key: FIREBASE_SERVICE_ACCOUNT_JSON
         sync: false
       - key: FIREBASE_API_KEY

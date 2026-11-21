@@ -33,9 +33,14 @@ export default function Signup() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await signup(form);
-      showToast("Account created! A 6-digit verification code has been sent to your email.", "success");
-      navigate(`/verify-email?email=${encodeURIComponent(form.email)}`);
+      const res = await signup(form);
+      if (res?.email_verification_required === false) {
+        showToast("Account created successfully! You can now sign in.", "success");
+        navigate("/login");
+      } else {
+        showToast("Account created! Check your email for the verification code.", "success");
+        navigate(`/verify-email?email=${encodeURIComponent(form.email)}`);
+      }
     } catch (err) {
       const data = err.response?.data;
       const firstError = data ? Object.values(data)[0] : null;

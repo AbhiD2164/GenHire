@@ -176,10 +176,12 @@ def dispatch_email(subject: str, message: str, recipient_email: str, fail_silent
 
     # ── Strategy 1: Resend HTTP REST API (Port 443 — Render Free Tier compatible) ──
     resend_key = os.environ.get("RESEND_API_KEY", "").strip()
-    if resend_key:
+    is_placeholder_key = resend_key.startswith(("re_your_actual", "re_dummy", "re_example", "re_placeholder"))
+    if resend_key and not is_placeholder_key:
         try:
             import requests as http
-            from_addr = os.environ.get("RESEND_FROM_EMAIL") or settings.DEFAULT_FROM_EMAIL or "onboarding@resend.dev"
+            # On Resend, default to onboarding@resend.dev unless custom verified domain is provided
+            from_addr = os.environ.get("RESEND_FROM_EMAIL", "").strip() or "GenHire <onboarding@resend.dev>"
             resp = http.post(
                 "https://api.resend.com/emails",
                 headers={
@@ -192,15 +194,25 @@ def dispatch_email(subject: str, message: str, recipient_email: str, fail_silent
                     "subject": subject,
                     "text": message,
                 },
-                timeout=8,
+                timeout=10,
             )
             if resp.status_code in (200, 201):
                 logger.info("Email dispatched successfully to %s via Resend HTTPS API.", recipient_email)
                 return True
             else:
-                logger.warning("Resend API returned %s: %s", resp.status_code, resp.text[:200])
+                logger.warning(
+                    "Resend API returned %s: %s (Check if sending domain or recipient is verified in Resend dashboard)",
+                    resp.status_code,
+                    resp.text[:300],
+                )
         except Exception as exc:
             logger.warning("Resend HTTPS email dispatch failed: %s", exc)
+    elif is_placeholder_key:
+        logger.warning(
+            "RESEND_API_KEY is currently set to placeholder '%s'. "
+            "Please replace it with your real API key from https://resend.com/api-keys.",
+            resend_key,
+        )
 
     # ── Strategy 2: Brevo HTTP REST API (Port 443 — Render Free Tier compatible) ───
     brevo_key = os.environ.get("BREVO_API_KEY", "").strip()
