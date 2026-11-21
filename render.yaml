@@ -21,7 +21,7 @@ services:
       - key: FRONTEND_URL
         sync: false
       - key: DEFAULT_FROM_EMAIL
-        sync: false
+        value: "GenHire <onboarding@resend.dev>"
       # Render Free Tier blocks outbound SMTP ports 25, 465, 587.
       # Use console backend so Django doesn't try SMTP at all.
       # Actual email delivery goes through Resend HTTPS REST API (port 443).

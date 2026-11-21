@@ -180,31 +180,46 @@ def dispatch_email(subject: str, message: str, recipient_email: str, fail_silent
     if resend_key and not is_placeholder_key:
         try:
             import requests as http
-            # On Resend, default to onboarding@resend.dev unless custom verified domain is provided
-            from_addr = os.environ.get("RESEND_FROM_EMAIL", "").strip() or "GenHire <onboarding@resend.dev>"
-            resp = http.post(
-                "https://api.resend.com/emails",
-                headers={
-                    "Authorization": f"Bearer {resend_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "from": from_addr,
-                    "to": [recipient_email],
-                    "subject": subject,
-                    "text": message,
-                },
-                timeout=10,
-            )
+            from_addr = os.environ.get("RESEND_FROM_EMAIL", "").strip()
+            # If from_addr contains unverified domain like genhire.com or is empty, use onboarding@resend.dev
+            if not from_addr or any(d in from_addr.lower() for d in ("genhire.com", "genhire.local", "example.com", "localhost")):
+                from_addr = "GenHire <onboarding@resend.dev>"
+
+            def _send_resend(sender):
+                return http.post(
+                    "https://api.resend.com/emails",
+                    headers={
+                        "Authorization": f"Bearer {resend_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "from": sender,
+                        "to": [recipient_email],
+                        "subject": subject,
+                        "text": message,
+                    },
+                    timeout=10,
+                )
+
+            resp = _send_resend(from_addr)
             if resp.status_code in (200, 201):
                 logger.info("Email dispatched successfully to %s via Resend HTTPS API.", recipient_email)
                 return True
-            else:
+            elif resp.status_code == 403 and from_addr != "GenHire <onboarding@resend.dev>":
                 logger.warning(
-                    "Resend API returned %s: %s (Check if sending domain or recipient is verified in Resend dashboard)",
-                    resp.status_code,
-                    resp.text[:300],
+                    "Sender '%s' failed domain verification (Resend 403). Automatically retrying with Resend sandbox sender...",
+                    from_addr,
                 )
+                resp = _send_resend("GenHire <onboarding@resend.dev>")
+                if resp.status_code in (200, 201):
+                    logger.info("Email dispatched successfully to %s via Resend sandbox.", recipient_email)
+                    return True
+
+            logger.warning(
+                "Resend API returned %s: %s (Check if recipient email matches your Resend account email or verify your domain at https://resend.com/domains)",
+                resp.status_code,
+                resp.text[:300],
+            )
         except Exception as exc:
             logger.warning("Resend HTTPS email dispatch failed: %s", exc)
     elif is_placeholder_key:
